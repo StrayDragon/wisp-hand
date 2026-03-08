@@ -17,6 +17,7 @@ ScopeType: TypeAlias = Literal[
 ]
 PointerButton: TypeAlias = Literal["left", "middle", "right"]
 DispatchState: TypeAlias = Literal["executed", "dry_run"]
+BatchStepStatus: TypeAlias = Literal["ok", "error", "skipped"]
 
 
 class CoordinateSpace(TypedDict):
@@ -69,6 +70,75 @@ class InputDispatchResult(TypedDict):
     action: dict[str, JSONValue]
 
 
+class WaitResult(TypedDict):
+    session_id: str
+    duration_ms: int
+    elapsed_ms: int
+
+
+class CaptureDiffResult(TypedDict):
+    left_capture_id: str
+    right_capture_id: str
+    changed: bool
+    change_ratio: float
+    changed_pixels: int
+    total_pixels: int
+    summary: str
+
+
+class BatchStepResult(TypedDict):
+    index: int
+    type: str
+    status: BatchStepStatus
+    output: NotRequired[JSONValue | None]
+    error: NotRequired["ErrorPayload" | None]
+
+
+class BatchRunResult(TypedDict):
+    batch_id: str
+    session_id: str
+    scope: ScopeEnvelope
+    stop_on_error: bool
+    step_count: int
+    steps: list[BatchStepResult]
+
+
+class VisionLocateCandidate(TypedDict):
+    x: int
+    y: int
+    width: int
+    height: int
+    confidence: float
+    reason: str
+
+
+class VisionDescribeResult(TypedDict):
+    provider: str
+    model: str
+    input_source: str
+    capture_id: str | None
+    image_width: int
+    image_height: int
+    processed_width: int
+    processed_height: int
+    answer: str
+    latency_ms: int
+
+
+class VisionLocateResult(TypedDict):
+    provider: str
+    model: str
+    input_source: str
+    capture_id: str
+    image_width: int
+    image_height: int
+    processed_width: int
+    processed_height: int
+    target: str
+    candidates: list[VisionLocateCandidate]
+    latency_ms: int
+
+
 class ErrorPayload(TypedDict):
     code: str
     message: str
@@ -84,6 +154,10 @@ class AuditRecord(TypedDict):
     scope: NotRequired[ScopeEnvelope | None]
     result: NotRequired[JSONValue | None]
     error: NotRequired[ErrorPayload | None]
+    batch_id: NotRequired[str | None]
+    parent_tool_name: NotRequired[str | None]
+    step_index: NotRequired[int | None]
+    step_type: NotRequired[str | None]
 
 
 @dataclass(slots=True)
@@ -158,6 +232,97 @@ class InputDispatchResultModel(BaseModel):
     scope: ScopeEnvelopeModel
     dispatch_state: DispatchState
     action: dict[str, Any]
+
+
+class WaitResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    duration_ms: int
+    elapsed_ms: int
+
+
+class CaptureDiffResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    left_capture_id: str
+    right_capture_id: str
+    changed: bool
+    change_ratio: float
+    changed_pixels: int
+    total_pixels: int
+    summary: str
+
+
+class ErrorPayloadModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+    details: dict[str, Any]
+
+
+class BatchStepResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int
+    type: str
+    status: BatchStepStatus
+    output: Any | None = None
+    error: ErrorPayloadModel | None = None
+
+
+class BatchRunResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: str
+    session_id: str
+    scope: ScopeEnvelopeModel
+    stop_on_error: bool
+    step_count: int
+    steps: list[BatchStepResultModel]
+
+
+class VisionLocateCandidateModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: int
+    y: int
+    width: int
+    height: int
+    confidence: float
+    reason: str
+
+
+class VisionDescribeResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    model: str
+    input_source: str
+    capture_id: str | None
+    image_width: int
+    image_height: int
+    processed_width: int
+    processed_height: int
+    answer: str
+    latency_ms: int
+
+
+class VisionLocateResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    model: str
+    input_source: str
+    capture_id: str
+    image_width: int
+    image_height: int
+    processed_width: int
+    processed_height: int
+    target: str
+    candidates: list[VisionLocateCandidateModel]
+    latency_ms: int
 
 
 class BoundsModel(BaseModel):

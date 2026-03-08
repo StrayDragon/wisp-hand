@@ -9,8 +9,10 @@ from mcp.types import CallToolResult, TextContent
 from wisp_hand.config import load_runtime_config
 from wisp_hand.errors import WispHandError, internal_error
 from wisp_hand.models import (
+    BatchRunResultModel,
     CapabilityResultModel,
     CaptureResultModel,
+    CaptureDiffResultModel,
     CursorPositionResultModel,
     InputDispatchResultModel,
     PointerButton,
@@ -18,6 +20,9 @@ from wisp_hand.models import (
     SessionCloseResultModel,
     SessionOpenResultModel,
     TopologyResultModel,
+    VisionDescribeResultModel,
+    VisionLocateResultModel,
+    WaitResultModel,
 )
 from wisp_hand.runtime import WispHandRuntime
 
@@ -109,6 +114,87 @@ class WispHandServer:
                 inline=inline,
                 with_cursor=with_cursor,
                 downscale=downscale,
+            )
+
+        @self.mcp.tool(
+            name="hand.wait",
+            description="Wait for a fixed duration within a session context.",
+            structured_output=True,
+        )
+        def wait(session_id: str, duration_ms: int) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.wait,
+                WaitResultModel,
+                session_id=session_id,
+                duration_ms=duration_ms,
+            )
+
+        @self.mcp.tool(
+            name="hand.capture.diff",
+            description="Compare two captures and return a deterministic pixel diff summary.",
+            structured_output=True,
+        )
+        def capture_diff(
+            left_capture_id: str,
+            right_capture_id: str,
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.capture_diff,
+                CaptureDiffResultModel,
+                left_capture_id=left_capture_id,
+                right_capture_id=right_capture_id,
+            )
+
+        @self.mcp.tool(
+            name="hand.batch.run",
+            description="Run a sequence of supported actions inside one session.",
+            structured_output=True,
+        )
+        def batch_run(
+            session_id: str,
+            steps: list[dict[str, Any]],
+            stop_on_error: bool = True,
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.batch_run,
+                BatchRunResultModel,
+                session_id=session_id,
+                steps=steps,
+                stop_on_error=stop_on_error,
+            )
+
+        @self.mcp.tool(
+            name="hand.vision.describe",
+            description="Describe an image from a capture artifact or inline image using Ollama vision.",
+            structured_output=True,
+        )
+        def vision_describe(
+            capture_id: str | None = None,
+            inline_image: str | None = None,
+            prompt: str | None = None,
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.vision_describe,
+                VisionDescribeResultModel,
+                capture_id=capture_id,
+                inline_image=inline_image,
+                prompt=prompt,
+            )
+
+        @self.mcp.tool(
+            name="hand.vision.locate",
+            description="Locate target regions within a captured image using Ollama vision.",
+            structured_output=True,
+        )
+        def vision_locate(
+            capture_id: str,
+            target: str,
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.vision_locate,
+                VisionLocateResultModel,
+                capture_id=capture_id,
+                target=target,
             )
 
         @self.mcp.tool(

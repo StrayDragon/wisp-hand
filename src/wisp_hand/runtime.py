@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
+from uuid import uuid4
 
 from wisp_hand.audit import AuditLogger
 from wisp_hand.capabilities import DependencyProbe
-from wisp_hand.capture import CaptureArtifactStore, CaptureEngine, CaptureTarget
+from wisp_hand.capture import CaptureArtifactStore, CaptureDiffEngine, CaptureEngine, CaptureTarget
 from wisp_hand.command import CommandRunner
 from wisp_hand.config import RuntimeConfig, load_runtime_config
 from wisp_hand.errors import WispHandError, internal_error
@@ -15,7 +19,10 @@ from wisp_hand.hyprland import HyprlandAdapter, desktop_bounds
 from wisp_hand.input_backend import InputBackend, WaylandInputBackend
 from wisp_hand.models import (
     AuditRecord,
+    BatchRunResult,
+    BatchStepResult,
     CapabilityResult,
+    CaptureDiffResult,
     InputDispatchResult,
     JSONValue,
     PointerButton,
@@ -24,10 +31,23 @@ from wisp_hand.models import (
     SessionCloseResult,
     SessionOpenResult,
     SessionRecord,
+    VisionDescribeResult,
+    VisionLocateResult,
+    WaitResult,
 )
 from wisp_hand.policy import InputPolicy, normalize_key_name
 from wisp_hand.scope import normalize_scope
 from wisp_hand.session import SessionStore
+from wisp_hand.vision import (
+    OllamaTransport,
+    OllamaVisionProvider,
+    PreparedVisionImage,
+    prepare_capture_image,
+    prepare_inline_image,
+    scale_candidates,
+)
+
+_AUDIT_CONTEXT: ContextVar[dict[str, JSONValue] | None] = ContextVar("_AUDIT_CONTEXT", default=None)
 
 IMPLEMENTED_TOOLS = [
     "hand.capabilities",
@@ -36,6 +56,11 @@ IMPLEMENTED_TOOLS = [
     "hand.desktop.get_topology",
     "hand.cursor.get_position",
     "hand.capture.screen",
+    "hand.wait",
+    "hand.capture.diff",
+    "hand.batch.run",
+    "hand.vision.describe",
+    "hand.vision.locate",
     "hand.pointer.move",
     "hand.pointer.click",
     "hand.pointer.drag",
@@ -43,6 +68,12 @@ IMPLEMENTED_TOOLS = [
     "hand.keyboard.type",
     "hand.keyboard.press",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledBatchStep:
+    step_type: str
+    executor: Callable[[], JSONValue]
 
 
 class WispHandRuntime:
@@ -56,13 +87,18 @@ class WispHandRuntime:
         command_runner: CommandRunner | None = None,
         hyprland_adapter: HyprlandAdapter | None = None,
         capture_engine: CaptureEngine | None = None,
+        capture_diff_engine: CaptureDiffEngine | None = None,
         input_backend: InputBackend | None = None,
         input_policy: InputPolicy | None = None,
+        vision_provider: OllamaVisionProvider | None = None,
+        ollama_transport: OllamaTransport | None = None,
         now_provider: Callable[[], datetime] | None = None,
         monotonic_provider: Callable[[], float] | None = None,
+        sleep_provider: Callable[[float], None] | None = None,
     ) -> None:
         self.config = config
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
+        self._sleep_provider = sleep_provider or sleep
         self._command_runner = command_runner or CommandRunner()
         self._session_store = session_store or SessionStore(
             default_ttl_seconds=config.session.default_ttl_seconds,
@@ -74,10 +110,14 @@ class WispHandRuntime:
             optional_binaries=config.dependencies.optional_binaries,
         )
         self._hyprland = hyprland_adapter or HyprlandAdapter(runner=self._command_runner)
+        self._capture_store = CaptureArtifactStore(base_dir=config.paths.capture_dir)
         self._capture_engine = capture_engine or CaptureEngine(
-            artifact_store=CaptureArtifactStore(base_dir=config.paths.capture_dir),
+            artifact_store=self._capture_store,
             runner=self._command_runner,
             now_provider=self._now_provider,
+        )
+        self._capture_diff_engine = capture_diff_engine or CaptureDiffEngine(
+            artifact_store=self._capture_store,
         )
         self._input_backend = input_backend or WaylandInputBackend(runner=self._command_runner)
         self._input_policy = input_policy or InputPolicy(
@@ -85,6 +125,18 @@ class WispHandRuntime:
             rate_limit_window_seconds=config.safety.rate_limit_window_seconds,
             dangerous_shortcuts=config.safety.dangerous_shortcuts,
             monotonic_provider=monotonic_provider,
+        )
+        self._vision_provider = vision_provider or (
+            OllamaVisionProvider(
+                base_url=config.vision.base_url,
+                model=config.vision.model or "",
+                timeout_seconds=config.vision.timeout_seconds,
+                max_tokens=config.vision.max_tokens,
+                max_concurrency=config.vision.max_concurrency,
+                transport=ollama_transport,
+            )
+            if config.vision.mode == "assist"
+            else None
         )
         self._audit_logger = audit_logger or AuditLogger(
             text_log_file=config.paths.text_log_file,
@@ -97,13 +149,19 @@ class WispHandRuntime:
         return cls(config=load_runtime_config(path))
 
     def capabilities(self) -> CapabilityResult:
-        return self._run_tool(
+        result = self._run_tool(
             "hand.capabilities",
             action=lambda: self._dependency_probe.report(
                 config_path=str(self.config.config_path),
                 implemented_tools=IMPLEMENTED_TOOLS,
             ),
         )
+        result["vision_available"] = (
+            self.config.vision.mode == "assist"
+            and bool(self.config.vision.model)
+            and bool(self.config.vision.base_url)
+        )
+        return result
 
     def open_session(
         self,
@@ -204,6 +262,172 @@ class WispHandRuntime:
             action=action,
             session_id=session_id,
         )
+
+    def wait(self, *, session_id: str, duration_ms: int) -> WaitResult:
+        if duration_ms < 0:
+            raise WispHandError(
+                "invalid_parameters",
+                "duration_ms must be greater than or equal to zero",
+                {"duration_ms": duration_ms},
+            )
+
+        def action() -> WaitResult:
+            session = self._session_store.get_session(session_id)
+            started = perf_counter()
+            self._sleep_provider(duration_ms / 1000)
+            return {
+                "session_id": session.session_id,
+                "duration_ms": duration_ms,
+                "elapsed_ms": self._elapsed_ms(started),
+            }
+
+        return self._run_tool(
+            "hand.wait",
+            action=action,
+            session_id=session_id,
+        )
+
+    def capture_diff(self, *, left_capture_id: str, right_capture_id: str) -> CaptureDiffResult:
+        return self._run_tool(
+            "hand.capture.diff",
+            action=lambda: self._capture_diff_engine.diff(
+                left_capture_id=left_capture_id,
+                right_capture_id=right_capture_id,
+            ),
+        )
+
+    def batch_run(
+        self,
+        *,
+        session_id: str,
+        steps: list[dict[str, JSONValue]],
+        stop_on_error: bool = True,
+    ) -> BatchRunResult:
+        def action() -> BatchRunResult:
+            session = self._session_store.get_session(session_id)
+            compiled_steps = self._compile_batch_steps(session_id=session_id, steps=steps)
+            batch_id = str(uuid4())
+            step_results: list[BatchStepResult] = []
+
+            for index, compiled in enumerate(compiled_steps):
+                with self._audit_context(
+                    {
+                        "batch_id": batch_id,
+                        "parent_tool_name": "hand.batch.run",
+                        "step_index": index,
+                        "step_type": compiled.step_type,
+                    }
+                ):
+                    try:
+                        output = compiled.executor()
+                    except WispHandError as exc:
+                        step_results.append(
+                            {
+                                "index": index,
+                                "type": compiled.step_type,
+                                "status": "error",
+                                "error": exc.to_payload(),
+                            }
+                        )
+                        if stop_on_error:
+                            step_results.extend(
+                                {
+                                    "index": skipped_index,
+                                    "type": skipped.step_type,
+                                    "status": "skipped",
+                                }
+                                for skipped_index, skipped in enumerate(compiled_steps[index + 1 :], start=index + 1)
+                            )
+                            break
+                    else:
+                        step_results.append(
+                            {
+                                "index": index,
+                                "type": compiled.step_type,
+                                "status": "ok",
+                                "output": output,
+                            }
+                        )
+
+            return {
+                "batch_id": batch_id,
+                "session_id": session.session_id,
+                "scope": session.scope,
+                "stop_on_error": stop_on_error,
+                "step_count": len(compiled_steps),
+                "steps": step_results,
+            }
+
+        return self._run_tool(
+            "hand.batch.run",
+            action=action,
+            session_id=session_id,
+        )
+
+    def vision_describe(
+        self,
+        *,
+        capture_id: str | None = None,
+        inline_image: str | None = None,
+        prompt: str | None = None,
+    ) -> VisionDescribeResult:
+        image = self._load_vision_image(capture_id=capture_id, inline_image=inline_image)
+        provider = self._require_vision_provider()
+        describe_prompt = prompt or "Describe the image concisely for an external computer-use agent."
+
+        def action() -> VisionDescribeResult:
+            payload = provider.describe(image=image, prompt=describe_prompt)
+            return {
+                "provider": payload["provider"],
+                "model": payload["model"],
+                "input_source": image.input_source,
+                "capture_id": image.capture_id,
+                "image_width": image.width,
+                "image_height": image.height,
+                "processed_width": image.processed_width,
+                "processed_height": image.processed_height,
+                "answer": payload["answer"],
+                "latency_ms": payload["latency_ms"],
+            }
+
+        with self._vision_audit_context(image=image, provider=provider):
+            return self._run_tool("hand.vision.describe", action=action)
+
+    def vision_locate(
+        self,
+        *,
+        capture_id: str,
+        target: str,
+    ) -> VisionLocateResult:
+        if not target:
+            raise WispHandError("invalid_parameters", "target must not be empty")
+        image = self._load_vision_image(capture_id=capture_id, inline_image=None)
+        provider = self._require_vision_provider()
+
+        def action() -> VisionLocateResult:
+            payload = provider.locate(image=image, target=target)
+            return {
+                "provider": payload["provider"],
+                "model": payload["model"],
+                "input_source": image.input_source,
+                "capture_id": capture_id,
+                "image_width": image.width,
+                "image_height": image.height,
+                "processed_width": image.processed_width,
+                "processed_height": image.processed_height,
+                "target": target,
+                "candidates": scale_candidates(
+                    candidates=payload["candidates"],
+                    from_width=image.processed_width,
+                    from_height=image.processed_height,
+                    to_width=image.width,
+                    to_height=image.height,
+                ),
+                "latency_ms": payload["latency_ms"],
+            }
+
+        with self._vision_audit_context(image=image, provider=provider):
+            return self._run_tool("hand.vision.locate", action=action)
 
     def pointer_move(self, *, session_id: str, x: int, y: int) -> InputDispatchResult:
         policy_action: dict[str, JSONValue] = {
@@ -392,6 +616,282 @@ class WispHandRuntime:
 
     def clear_emergency_stop(self) -> None:
         self._input_policy.clear_emergency_stop()
+
+    def _require_vision_provider(self) -> OllamaVisionProvider:
+        if self.config.vision.mode != "assist":
+            raise WispHandError(
+                "capability_unavailable",
+                "Vision mode is disabled",
+                {"mode": self.config.vision.mode},
+            )
+        if self._vision_provider is None or not self.config.vision.model or not self.config.vision.base_url:
+            raise WispHandError(
+                "capability_unavailable",
+                "Vision provider is not configured",
+                {"mode": self.config.vision.mode},
+            )
+        return self._vision_provider
+
+    def _load_vision_image(
+        self,
+        *,
+        capture_id: str | None,
+        inline_image: str | None,
+    ) -> PreparedVisionImage:
+        if (capture_id is None) == (inline_image is None):
+            raise WispHandError(
+                "invalid_parameters",
+                "exactly one of capture_id or inline_image must be provided",
+                {},
+            )
+
+        if capture_id is not None:
+            return prepare_capture_image(
+                artifact_store=self._capture_store,
+                capture_id=capture_id,
+                max_image_edge=self.config.vision.max_image_edge,
+            )
+
+        return prepare_inline_image(
+            inline_image=str(inline_image),
+            max_image_edge=self.config.vision.max_image_edge,
+        )
+
+    @contextmanager
+    def _vision_audit_context(
+        self,
+        *,
+        image: PreparedVisionImage,
+        provider: OllamaVisionProvider,
+    ):
+        with self._audit_context(
+            {
+                "input_source": image.input_source,
+                "provider": provider.provider_name,
+                "model": provider.model,
+                "capture_id": image.capture_id,
+                "image_width": image.width,
+                "image_height": image.height,
+                "processed_width": image.processed_width,
+                "processed_height": image.processed_height,
+            }
+        ):
+            yield
+
+    def _compile_batch_steps(
+        self,
+        *,
+        session_id: str,
+        steps: list[dict[str, JSONValue]],
+    ) -> list[CompiledBatchStep]:
+        compiled: list[CompiledBatchStep] = []
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict):
+                raise WispHandError(
+                    "invalid_parameters",
+                    "batch steps must be JSON objects",
+                    {"step_index": index},
+                )
+            compiled.append(self._compile_batch_step(session_id=session_id, step_index=index, step=step))
+        return compiled
+
+    def _compile_batch_step(
+        self,
+        *,
+        session_id: str,
+        step_index: int,
+        step: dict[str, JSONValue],
+    ) -> CompiledBatchStep:
+        step_type = step.get("type")
+        if not isinstance(step_type, str) or not step_type:
+            raise WispHandError(
+                "invalid_parameters",
+                "batch step type must be a non-empty string",
+                {"step_index": step_index},
+            )
+
+        if step_type == "move":
+            x = self._require_step_int(step, "x", step_index=step_index)
+            y = self._require_step_int(step, "y", step_index=step_index)
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.pointer_move(session_id=session_id, x=x, y=y),
+            )
+
+        if step_type == "click":
+            x = self._require_step_int(step, "x", step_index=step_index)
+            y = self._require_step_int(step, "y", step_index=step_index)
+            button = self._normalize_button(
+                self._optional_step_string(step, "button", step_index=step_index) or "left"
+            )
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.pointer_click(
+                    session_id=session_id,
+                    x=x,
+                    y=y,
+                    button=button,
+                ),
+            )
+
+        if step_type == "drag":
+            start_x = self._require_step_int(step, "start_x", step_index=step_index)
+            start_y = self._require_step_int(step, "start_y", step_index=step_index)
+            end_x = self._require_step_int(step, "end_x", step_index=step_index)
+            end_y = self._require_step_int(step, "end_y", step_index=step_index)
+            button = self._normalize_button(
+                self._optional_step_string(step, "button", step_index=step_index) or "left"
+            )
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.pointer_drag(
+                    session_id=session_id,
+                    start_x=start_x,
+                    start_y=start_y,
+                    end_x=end_x,
+                    end_y=end_y,
+                    button=button,
+                ),
+            )
+
+        if step_type == "scroll":
+            x = self._require_step_int(step, "x", step_index=step_index)
+            y = self._require_step_int(step, "y", step_index=step_index)
+            delta_x = self._optional_step_int(step, "delta_x", step_index=step_index) or 0
+            delta_y = self._optional_step_int(step, "delta_y", step_index=step_index) or 0
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.pointer_scroll(
+                    session_id=session_id,
+                    x=x,
+                    y=y,
+                    delta_x=delta_x,
+                    delta_y=delta_y,
+                ),
+            )
+
+        if step_type == "type":
+            text = self._require_step_string(step, "text", step_index=step_index)
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.keyboard_type(session_id=session_id, text=text),
+            )
+
+        if step_type == "press":
+            keys = self._require_step_string_list(step, "keys", step_index=step_index)
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.keyboard_press(session_id=session_id, keys=keys),
+            )
+
+        if step_type == "wait":
+            duration_ms = self._require_step_int(step, "duration_ms", step_index=step_index)
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.wait(session_id=session_id, duration_ms=duration_ms),
+            )
+
+        if step_type == "capture":
+            target = self._optional_step_string(step, "target", step_index=step_index) or "scope"
+            inline = self._optional_step_bool(step, "inline", step_index=step_index) or False
+            with_cursor = self._optional_step_bool(step, "with_cursor", step_index=step_index) or False
+            downscale = self._optional_step_float(step, "downscale", step_index=step_index)
+            return CompiledBatchStep(
+                step_type=step_type,
+                executor=lambda: self.capture_screen(
+                    session_id=session_id,
+                    target=target,  # type: ignore[arg-type]
+                    inline=inline,
+                    with_cursor=with_cursor,
+                    downscale=downscale,
+                ),
+            )
+
+        raise WispHandError(
+            "invalid_parameters",
+            "Unsupported batch step type",
+            {"step_index": step_index, "type": step_type},
+        )
+
+    @staticmethod
+    def _require_step_int(step: dict[str, JSONValue], key: str, *, step_index: int) -> int:
+        value = step.get(key)
+        if not isinstance(value, int):
+            raise WispHandError(
+                "invalid_parameters",
+                f"batch step field '{key}' must be an integer",
+                {"step_index": step_index, "field": key},
+            )
+        return value
+
+    @staticmethod
+    def _optional_step_int(step: dict[str, JSONValue], key: str, *, step_index: int) -> int | None:
+        if key not in step or step[key] is None:
+            return None
+        return WispHandRuntime._require_step_int(step, key, step_index=step_index)
+
+    @staticmethod
+    def _require_step_string(step: dict[str, JSONValue], key: str, *, step_index: int) -> str:
+        value = step.get(key)
+        if not isinstance(value, str) or not value:
+            raise WispHandError(
+                "invalid_parameters",
+                f"batch step field '{key}' must be a non-empty string",
+                {"step_index": step_index, "field": key},
+            )
+        return value
+
+    @staticmethod
+    def _optional_step_string(step: dict[str, JSONValue], key: str, *, step_index: int) -> str | None:
+        if key not in step or step[key] is None:
+            return None
+        return WispHandRuntime._require_step_string(step, key, step_index=step_index)
+
+    @staticmethod
+    def _optional_step_bool(step: dict[str, JSONValue], key: str, *, step_index: int) -> bool | None:
+        value = step.get(key)
+        if value is None and key not in step:
+            return None
+        if not isinstance(value, bool):
+            raise WispHandError(
+                "invalid_parameters",
+                f"batch step field '{key}' must be a boolean",
+                {"step_index": step_index, "field": key},
+            )
+        return value
+
+    @staticmethod
+    def _optional_step_float(step: dict[str, JSONValue], key: str, *, step_index: int) -> float | None:
+        value = step.get(key)
+        if value is None and key not in step:
+            return None
+        if not isinstance(value, (int, float)):
+            raise WispHandError(
+                "invalid_parameters",
+                f"batch step field '{key}' must be a number",
+                {"step_index": step_index, "field": key},
+            )
+        return float(value)
+
+    @staticmethod
+    def _require_step_string_list(step: dict[str, JSONValue], key: str, *, step_index: int) -> list[str]:
+        value = step.get(key)
+        if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item for item in value):
+            raise WispHandError(
+                "invalid_parameters",
+                f"batch step field '{key}' must be a non-empty string array",
+                {"step_index": step_index, "field": key},
+            )
+        return [item for item in value]
+
+    @contextmanager
+    def _audit_context(self, values: dict[str, JSONValue]):
+        current = _AUDIT_CONTEXT.get() or {}
+        token: Token[dict[str, JSONValue] | None] = _AUDIT_CONTEXT.set({**current, **values})
+        try:
+            yield
+        finally:
+            _AUDIT_CONTEXT.reset(token)
 
     def _run_tool(
         self,
@@ -612,6 +1112,10 @@ class WispHandRuntime:
             "status": status,  # type: ignore[typeddict-item]
             "latency_ms": latency_ms,
         }
+        audit_context = _AUDIT_CONTEXT.get()
+        if audit_context is not None:
+            for key, value in audit_context.items():
+                payload[key] = value  # type: ignore[typeddict-item]
         payload["session_id"] = session_id
         payload["scope"] = scope
         if result is not None:
