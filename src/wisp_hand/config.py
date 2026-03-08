@@ -43,6 +43,15 @@ class SafetyConfig(BaseModel):
 
     default_armed: bool = False
     default_dry_run: bool = False
+    max_actions_per_window: int = 16
+    rate_limit_window_seconds: float = 1.0
+    dangerous_shortcuts: list[str] = Field(
+        default_factory=lambda: [
+            "ctrl+alt+backspace",
+            "ctrl+alt+delete",
+            "super+l",
+        ]
+    )
 
 
 class DependencyConfig(BaseModel):

@@ -12,6 +12,8 @@ from wisp_hand.models import (
     CapabilityResultModel,
     CaptureResultModel,
     CursorPositionResultModel,
+    InputDispatchResultModel,
+    PointerButton,
     ScopeType,
     SessionCloseResultModel,
     SessionOpenResultModel,
@@ -107,6 +109,115 @@ class WispHandServer:
                 inline=inline,
                 with_cursor=with_cursor,
                 downscale=downscale,
+            )
+
+        @self.mcp.tool(
+            name="hand.pointer.move",
+            description="Move the pointer to scope-relative coordinates inside an armed session.",
+            structured_output=True,
+        )
+        def pointer_move(session_id: str, x: int, y: int) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.pointer_move,
+                InputDispatchResultModel,
+                session_id=session_id,
+                x=x,
+                y=y,
+            )
+
+        @self.mcp.tool(
+            name="hand.pointer.click",
+            description="Click a pointer button at scope-relative coordinates inside an armed session.",
+            structured_output=True,
+        )
+        def pointer_click(
+            session_id: str,
+            x: int,
+            y: int,
+            button: PointerButton = "left",
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.pointer_click,
+                InputDispatchResultModel,
+                session_id=session_id,
+                x=x,
+                y=y,
+                button=button,
+            )
+
+        @self.mcp.tool(
+            name="hand.pointer.drag",
+            description="Drag a pointer button between two scope-relative coordinates inside an armed session.",
+            structured_output=True,
+        )
+        def pointer_drag(
+            session_id: str,
+            start_x: int,
+            start_y: int,
+            end_x: int,
+            end_y: int,
+            button: PointerButton = "left",
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.pointer_drag,
+                InputDispatchResultModel,
+                session_id=session_id,
+                start_x=start_x,
+                start_y=start_y,
+                end_x=end_x,
+                end_y=end_y,
+                button=button,
+            )
+
+        @self.mcp.tool(
+            name="hand.pointer.scroll",
+            description="Scroll at scope-relative coordinates inside an armed session.",
+            structured_output=True,
+        )
+        def pointer_scroll(
+            session_id: str,
+            x: int,
+            y: int,
+            delta_x: int = 0,
+            delta_y: int = 0,
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.pointer_scroll,
+                InputDispatchResultModel,
+                session_id=session_id,
+                x=x,
+                y=y,
+                delta_x=delta_x,
+                delta_y=delta_y,
+            )
+
+        @self.mcp.tool(
+            name="hand.keyboard.type",
+            description="Type text inside an armed session using the shared input safety pipeline.",
+            structured_output=True,
+        )
+        def keyboard_type(session_id: str, text: str) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.keyboard_type,
+                InputDispatchResultModel,
+                session_id=session_id,
+                text=text,
+            )
+
+        @self.mcp.tool(
+            name="hand.keyboard.press",
+            description="Press a key or key chord inside an armed session using the shared input safety pipeline.",
+            structured_output=True,
+        )
+        def keyboard_press(
+            session_id: str,
+            keys: list[str],
+        ) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(
+                self.runtime.keyboard_press,
+                InputDispatchResultModel,
+                session_id=session_id,
+                keys=keys,
             )
 
     @staticmethod
