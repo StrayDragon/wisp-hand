@@ -54,6 +54,18 @@ class SafetyConfig(BaseModel):
     )
 
 
+class VisionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["disabled", "assist"] = "disabled"
+    model: str | None = None
+    base_url: str = "http://127.0.0.1:11434"
+    timeout_seconds: float = 30.0
+    max_image_edge: int = Field(default=1536, gt=0)
+    max_tokens: int = Field(default=256, gt=0)
+    max_concurrency: int = Field(default=1, gt=0)
+
+
 class DependencyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,6 +80,7 @@ class RuntimeConfig(BaseModel):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    vision: VisionConfig = Field(default_factory=VisionConfig)
     dependencies: DependencyConfig = Field(default_factory=DependencyConfig)
     config_path: Path = DEFAULT_CONFIG_PATH
 
