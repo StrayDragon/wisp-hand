@@ -17,6 +17,8 @@ MCP_ERROR_MAP: dict[str, int] = {
     "session_not_found": -32004,
     "session_expired": -32005,
     "policy_denied": -32006,
+    "session_not_armed": -32007,
+    "scope_violation": -32008,
     "internal_error": -32603,
 }
 

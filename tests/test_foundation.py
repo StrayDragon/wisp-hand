@@ -163,6 +163,12 @@ def test_server_registers_tools_and_returns_structured_output(tmp_path: Path) ->
             "hand.desktop.get_topology",
             "hand.cursor.get_position",
             "hand.capture.screen",
+            "hand.pointer.move",
+            "hand.pointer.click",
+            "hand.pointer.drag",
+            "hand.pointer.scroll",
+            "hand.keyboard.type",
+            "hand.keyboard.press",
         }
 
         result = await server.mcp.call_tool(

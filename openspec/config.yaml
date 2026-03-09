@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   项目名: Wisp Hand
-  产品定位: 面向 AI agent 的 Hyprland-first / Wayland computer-use MCP server.
+  产品定位: 为 AI agent 提供能力的 Hyprland-first / Wayland computer-use MCP server, 不内置 agent loop.
   当前目标: 以 openspec/changes/ 下的 MVP change 链作为实施来源, 以 docs/ROADMAP.md 作为阶段顺序与依赖依据.
 
   MVP 必须覆盖的能力:

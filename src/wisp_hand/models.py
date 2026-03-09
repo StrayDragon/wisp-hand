@@ -15,6 +15,8 @@ ScopeType: TypeAlias = Literal[
     "region",
     "window-follow-region",
 ]
+PointerButton: TypeAlias = Literal["left", "middle", "right"]
+DispatchState: TypeAlias = Literal["executed", "dry_run"]
 
 
 class CoordinateSpace(TypedDict):
@@ -60,6 +62,13 @@ class SessionCloseResult(TypedDict):
     closed_at: str
 
 
+class InputDispatchResult(TypedDict):
+    session_id: str
+    scope: ScopeEnvelope
+    dispatch_state: DispatchState
+    action: dict[str, JSONValue]
+
+
 class ErrorPayload(TypedDict):
     code: str
     message: str
@@ -69,7 +78,7 @@ class ErrorPayload(TypedDict):
 class AuditRecord(TypedDict):
     timestamp: str
     tool_name: str
-    status: Literal["ok", "error"]
+    status: Literal["ok", "error", "denied"]
     latency_ms: int
     session_id: NotRequired[str | None]
     scope: NotRequired[ScopeEnvelope | None]
@@ -140,6 +149,15 @@ class SessionCloseResultModel(BaseModel):
     session_id: str
     closed: bool
     closed_at: str
+
+
+class InputDispatchResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    scope: ScopeEnvelopeModel
+    dispatch_state: DispatchState
+    action: dict[str, Any]
 
 
 class BoundsModel(BaseModel):
