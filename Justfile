@@ -28,3 +28,11 @@ inspector config="docs/example_config.toml":
 # Same as `inspector`, but disables automatic browser opening.
 inspector-no-open config="docs/example_config.toml":
   MCP_AUTO_OPEN_ENABLED=false npx --yes @modelcontextprotocol/inspector -- uv run wisp-hand-mcp --config "{{config}}" --transport stdio
+
+# Serve MkDocs site locally (docs/mkdocs).
+docs-serve:
+  NO_MKDOCS_2_WARNING=1 uv run mkdocs serve
+
+# Build MkDocs site (fails on warnings).
+docs-build:
+  NO_MKDOCS_2_WARNING=1 uv run mkdocs build --strict
