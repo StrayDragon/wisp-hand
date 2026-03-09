@@ -259,12 +259,13 @@ class _VirtualPointerSession:
         self._manager_id = 4
         self._pointer_id = 5
         self._manager_bound = False
+        self._next_id = 6
 
     def __enter__(self) -> _VirtualPointerSession:
         self._sock = self._connect()
         self._send_message(1, 1, struct.pack("<I", self._wl_registry_id))
         self._send_message(1, 0, struct.pack("<I", self._callback_id))
-        self._drain_events()
+        self._drain_events(callback_id=self._callback_id)
         if not self._manager_bound:
             raise WispHandError(
                 "capability_unavailable",
@@ -389,20 +390,29 @@ class _VirtualPointerSession:
         self._send_message(self._pointer_id, 4, b"")
 
     def _sync(self) -> None:
-        self._send_message(1, 0, struct.pack("<I", self._callback_id))
-        self._drain_events()
+        callback_id = self._next_id
+        self._next_id += 1
+        self._send_message(1, 0, struct.pack("<I", callback_id))
+        self._drain_events(callback_id=callback_id)
 
-    def _drain_events(self) -> None:
+    def _drain_events(self, *, callback_id: int, timeout_seconds: float = 2.0) -> None:
         assert self._sock is not None
         self._sock.setblocking(False)
         callback_done = False
+        started = time.monotonic()
         try:
             while True:
                 try:
-                    header = _recv_exactly(self._sock, 8)
+                    header = self._sock.recv(8)
                 except BlockingIOError:
                     if callback_done:
                         break
+                    if (time.monotonic() - started) >= timeout_seconds:
+                        raise WispHandError(
+                            "capability_unavailable",
+                            "Wayland virtual pointer timed out waiting for callback",
+                            {"timeout_seconds": timeout_seconds},
+                        )
                     time.sleep(0.001)
                     continue
 
@@ -412,7 +422,7 @@ class _VirtualPointerSession:
                 object_id, size_and_opcode = struct.unpack("<II", header)
                 size = (size_and_opcode >> 16) & 0xFFFF
                 opcode = size_and_opcode & 0xFFFF
-                payload = _recv_exactly(self._sock, size - 8)
+                payload = self._sock.recv(size - 8)
                 if len(payload) < size - 8:
                     break
 
@@ -429,7 +439,7 @@ class _VirtualPointerSession:
                         )
                         self._send_message(self._wl_registry_id, 0, bind_payload)
                         self._manager_bound = True
-                elif object_id == self._callback_id and opcode == 0:
+                elif object_id == callback_id and opcode == 0:
                     callback_done = True
         finally:
             self._sock.setblocking(True)
