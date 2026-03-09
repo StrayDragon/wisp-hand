@@ -1,20 +1,53 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  项目名: Wisp Hand
+  产品定位: 面向 AI agent 的 Hyprland-first / Wayland computer-use MCP server.
+  当前目标: 以 openspec/changes/ 下的 MVP change 链作为实施来源, 以 docs/ROADMAP.md 作为阶段顺序与依赖依据.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  MVP 必须覆盖的能力:
+  - 本地 daemon 与 MCP server 骨架
+  - session / scope / error / config / audit 基础域模型
+  - Hyprland topology / active window / cursor / screenshot 只读链路
+  - scope 内 pointer / keyboard 输入链路
+  - safe-by-default: disarmed, dry-run, rate limit, emergency stop, audit logging
+  - 可选 Ollama vision describe / locate 辅助链路
+
+  设计原则:
+  - Hyprland-first: v1 不做 X11, GNOME, KDE, 通用 Wayland 兼容层
+  - Scope-first: 所有副作用动作必须显式绑定作用域
+  - Deterministic-first: 优先低级、明确、可验证工具
+  - Safe-by-default: 默认 disarmed, 且所有输入都受策略与审计约束
+  - Local-first: 视觉默认本地 Ollama, 允许完全关闭
+  - Observable-first: tool call, capture, action, rejection, latency 都必须可追踪
+
+  Roadmap 拆分原则:
+  - 先 foundation, 再 observe, 再 scoped input + safety, 再 batch/wait/diff, 再 vision, 最后 hardening
+  - 每个 change 只覆盖一个清晰里程碑, 作为下一个 change 的前置
+  - 每个 change 都要自解释, 不依赖口头补充才能理解边界
+
+  项目约束:
+  - 当前仓库可直接升级到目标写法, 不做兼容性垫片、双轨实现或过渡 API
+  - 除非用户明确要求兼容, 提案里不要加入旧接口/旧架构兼容方案
+  - 提案优先描述长期正确的实现边界, 不为了临时原型保留历史包袱
+
+rules:
+  proposal:
+    - 默认使用中文撰写; 仅在协议名、命令名、字段名、capability 名称上保留必要英文.
+    - 必须明确说明该 change 在 MVP 依赖链中的位置、前置条件和后续承接 change.
+    - New Capabilities 只列本 change 真正新增的能力, 不提前混入后续里程碑内容.
+    - Modified Capabilities 如非必要保持为空, 不为尚未归档的未来 change 预写变更.
+    - What Changes 必须写清边界、非目标和完成定义, 避免模糊措辞.
+  specs:
+    - 默认使用中文撰写; capability 标识与 requirement 名称可保留必要英文.
+    - 只写可验证行为, 不写实现细节或代码组织.
+    - Scenario 必须自解释且无前置歧义, 至少覆盖成功路径与关键拒绝/错误路径.
+    - 不为兼容性增加 requirements; 如需升级, 直接以新行为为准.
+  design:
+    - 默认使用中文撰写.
+    - 必须说明与上游/下游 change 的接口边界、关键数据模型、依赖与风险.
+    - 必须显式写出不做什么, 避免和相邻里程碑重叠.
+  tasks:
+    - 默认使用中文撰写.
+    - 任务必须可直接实施, 按依赖顺序排列, 粒度适合单人连续开发.
+    - 每个任务组只覆盖一个明确子目标, 并包含验证或测试任务.
