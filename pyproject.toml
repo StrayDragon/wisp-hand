@@ -1,14 +1,25 @@
 [project]
 name = "wisp-hand"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hyprland-first computer-use MCP server foundation"
 readme = "README.md"
 authors = [
     { name = "straydragon", email = "straydragonl@foxmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "mcp[cli]>=1.26,<2",
+    "pillow>=11.2,<12",
+]
+
+[project.scripts]
+wisp-hand = "wisp_hand.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.10.8,<0.11.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4,<9",
+]
