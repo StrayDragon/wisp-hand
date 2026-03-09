@@ -1,0 +1,9 @@
+[submodule "docs/source_ref/OTAKUWeBer.Wayland-automation"]
+	path = docs/source_ref/OTAKUWeBer.Wayland-automation
+	url = git@github.com:OTAKUWeBer/Wayland-automation.git
+[submodule "docs/source_ref/someaka.wayland-mcp"]
+	path = docs/source_ref/someaka.wayland-mcp
+	url = git@github.com:someaka/wayland-mcp.git
+[submodule "docs/source_ref/TobiasNorlund.ui-act"]
+	path = docs/source_ref/TobiasNorlund.ui-act
+	url = git@github.com:TobiasNorlund/ui-act.git
