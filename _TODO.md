@@ -47,7 +47,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 capture_dir = "./state/captures"
 EOF
 
@@ -104,7 +104,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 EOF
 
 WISP_TEST_DIR="$tmpdir" uv run python - <<'PY'
@@ -155,7 +155,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 EOF
 
 WISP_TEST_DIR="$tmpdir" uv run python - <<'PY'
@@ -198,7 +198,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 capture_dir = "./state/captures"
 
 [vision]

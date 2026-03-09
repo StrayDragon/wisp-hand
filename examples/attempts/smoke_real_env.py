@@ -30,6 +30,7 @@ def _write_runtime_config(
     config_path: Path,
     state_dir: Path,
     vision: dict[str, Any] | None,
+    logging: dict[str, Any] | None,
 ) -> None:
     lines: list[str] = [
         "[server]",
@@ -38,8 +39,20 @@ def _write_runtime_config(
         "[paths]",
         f'state_dir = "{state_dir.as_posix()}"',
         f'audit_file = "{(state_dir / "audit.jsonl").as_posix()}"',
-        f'text_log_file = "{(state_dir / "runtime.log").as_posix()}"',
+        f'runtime_log_file = "{(state_dir / "runtime.jsonl").as_posix()}"',
         f'capture_dir = "{(state_dir / "captures").as_posix()}"',
+        "",
+        "[logging]",
+        f'level = "{(logging or {}).get("level", "INFO")}"',
+        f'allow_sensitive = {str(bool((logging or {}).get("allow_sensitive", False))).lower()}',
+        "",
+        "[logging.console]",
+        f'enabled = {str(bool((logging or {}).get("console_enabled", False))).lower()}',
+        f'format = "{(logging or {}).get("console_format", "plain")}"',
+        "",
+        "[logging.file]",
+        f'enabled = {str(bool((logging or {}).get("file_enabled", True))).lower()}',
+        f'format = "{(logging or {}).get("file_format", "json")}"',
         "",
         "[session]",
         "default_ttl_seconds = 60",
@@ -228,6 +241,28 @@ def main(argv: list[str] | None = None) -> int:
         default="http://127.0.0.1:11434",
         help="Ollama base URL.",
     )
+    parser.add_argument(
+        "--log-console",
+        action="store_true",
+        help="Enable console logging (always stderr).",
+    )
+    parser.add_argument(
+        "--log-console-format",
+        choices=["json", "rich", "plain"],
+        default="plain",
+        help="Console log format.",
+    )
+    parser.add_argument(
+        "--log-file-format",
+        choices=["json", "plain"],
+        default="json",
+        help="Runtime log file format.",
+    )
+    parser.add_argument(
+        "--log-allow-sensitive",
+        action="store_true",
+        help="Allow sensitive fields in logs/audit (unsafe).",
+    )
     args = parser.parse_args(argv)
 
     def write_out() -> None:
@@ -252,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "monitors": [],
         "checks": {},
+        "logs": {},
     }
     write_out()
 
@@ -303,8 +339,26 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(temp_root)
         state_dir = root / "state"
         config_path = root / "config.toml"
-        _write_runtime_config(config_path=config_path, state_dir=state_dir, vision=vision_config)
+        logging_config = {
+            "level": "INFO",
+            "allow_sensitive": bool(args.log_allow_sensitive),
+            "console_enabled": bool(args.log_console),
+            "console_format": str(args.log_console_format),
+            "file_enabled": True,
+            "file_format": str(args.log_file_format),
+        }
+        _write_runtime_config(
+            config_path=config_path,
+            state_dir=state_dir,
+            vision=vision_config,
+            logging=logging_config,
+        )
         runtime = WispHandRuntime(config=load_runtime_config(config_path))
+        report["logs"] = {
+            "config_path": str(config_path),
+            "audit_file": str(state_dir / "audit.jsonl"),
+            "runtime_log_file": str(state_dir / "runtime.jsonl"),
+        }
 
         report["progress"] = {"phase": "capabilities", "step": None, "updated_at": time.time()}
         write_out()
@@ -606,6 +660,50 @@ def main(argv: list[str] | None = None) -> int:
                 runtime.close_session(session_id=opened["session_id"])
                 report["progress"] = {"phase": "vision", "step": "done", "updated_at": time.time()}
                 write_out()
+
+        report["progress"] = {"phase": "logging", "step": None, "updated_at": time.time()}
+        write_out()
+        try:
+            import logging as py_logging
+            import sys as py_sys
+
+            root_logger = py_logging.getLogger()
+            stdout_handlers = [
+                handler
+                for handler in root_logger.handlers
+                if isinstance(handler, py_logging.StreamHandler)
+                and getattr(handler, "stream", None) in {py_sys.stdout, py_sys.__stdout__}
+            ]
+            report["checks"]["logging"] = {
+                "stdout_safe": not stdout_handlers,
+                "runtime_log_file_format": args.log_file_format,
+                "runtime_log_file_parseable": None,
+                "runtime_log_file_has_required_fields": None,
+                "runtime_log_file_lines": 0,
+            }
+        except Exception as exc:  # noqa: BLE001
+            report["checks"]["logging"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+        runtime_log_path = state_dir / "runtime.jsonl"
+        if args.log_file_format == "json" and runtime_log_path.exists():
+            try:
+                lines = runtime_log_path.read_text(encoding="utf-8").splitlines()
+                parsed = [json.loads(line) for line in lines if line]
+                required_ok = all(
+                    isinstance(entry, dict)
+                    and "timestamp" in entry
+                    and "level" in entry
+                    and "event" in entry
+                    and "component" in entry
+                    for entry in parsed
+                )
+                report["checks"]["logging"]["runtime_log_file_parseable"] = True
+                report["checks"]["logging"]["runtime_log_file_has_required_fields"] = required_ok
+                report["checks"]["logging"]["runtime_log_file_lines"] = len(parsed)
+            except Exception as exc:  # noqa: BLE001
+                report["checks"]["logging"]["runtime_log_file_parseable"] = False
+                report["checks"]["logging"]["error"] = f"{type(exc).__name__}: {exc}"
+        write_out()
 
         report["progress"] = {"phase": "done", "step": None, "updated_at": time.time()}
         write_out()

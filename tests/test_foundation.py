@@ -42,7 +42,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 
 [session]
 default_ttl_seconds = 30
@@ -59,12 +59,14 @@ def test_load_runtime_config_resolves_relative_paths(tmp_path: Path) -> None:
             """
 [server]
 transport = "sse"
-log_level = "DEBUG"
 
 [paths]
 state_dir = "./var/state"
 audit_file = "./var/audit/audit.jsonl"
-text_log_file = "./var/log/runtime.log"
+runtime_log_file = "./var/log/runtime.jsonl"
+
+[logging]
+level = "DEBUG"
 
 [safety]
 default_armed = true
@@ -74,12 +76,12 @@ default_dry_run = true
     )
 
     assert config.server.transport == "sse"
-    assert config.server.log_level == "DEBUG"
+    assert config.logging.level == "DEBUG"
     assert config.safety.default_armed is True
     assert config.safety.default_dry_run is True
     assert config.paths.state_dir == (tmp_path / "var/state").resolve()
     assert config.paths.audit_file == (tmp_path / "var/audit/audit.jsonl").resolve()
-    assert config.paths.text_log_file == (tmp_path / "var/log/runtime.log").resolve()
+    assert config.paths.runtime_log_file == (tmp_path / "var/log/runtime.jsonl").resolve()
     assert config.paths.capture_dir == (tmp_path / "var/state/captures").resolve()
 
 
@@ -237,5 +239,5 @@ def test_audit_logs_include_required_fields(tmp_path: Path) -> None:
     assert session_record["scope"]["type"] == "region"
     assert session_record["result"]["session_id"] == opened["session_id"]
 
-    text_log = config.paths.text_log_file
-    assert text_log is not None and text_log.exists()
+    runtime_log = config.paths.runtime_log_file
+    assert runtime_log is not None and runtime_log.exists()

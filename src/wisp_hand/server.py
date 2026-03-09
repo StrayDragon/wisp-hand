@@ -33,7 +33,7 @@ class WispHandServer:
         self.mcp = FastMCP(
             name="Wisp Hand",
             instructions="Hyprland-first computer-use MCP runtime foundation.",
-            log_level=runtime.config.server.log_level,
+            log_level=runtime.config.logging.level,
             host=runtime.config.server.host,
             port=runtime.config.server.port,
         )

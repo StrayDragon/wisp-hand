@@ -9,6 +9,8 @@ from pathlib import Path
 from time import perf_counter, sleep
 from uuid import uuid4
 
+from structlog.contextvars import bind_contextvars, unbind_contextvars
+
 from wisp_hand.audit import AuditLogger
 from wisp_hand.capabilities import DependencyProbe
 from wisp_hand.capture import CaptureArtifactStore, CaptureDiffEngine, CaptureEngine, CaptureTarget
@@ -46,6 +48,7 @@ from wisp_hand.vision import (
     prepare_inline_image,
     scale_candidates,
 )
+from wisp_hand.observability import get_logger, init_logging
 
 _AUDIT_CONTEXT: ContextVar[dict[str, JSONValue] | None] = ContextVar("_AUDIT_CONTEXT", default=None)
 
@@ -97,6 +100,11 @@ class WispHandRuntime:
         sleep_provider: Callable[[float], None] | None = None,
     ) -> None:
         self.config = config
+        try:
+            init_logging(config)
+        except Exception:  # pragma: no cover - logging must never break runtime
+            pass
+        self._logger = get_logger("runtime")
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
         self._sleep_provider = sleep_provider or sleep
         self._command_runner = command_runner or CommandRunner()
@@ -139,8 +147,13 @@ class WispHandRuntime:
             else None
         )
         self._audit_logger = audit_logger or AuditLogger(
-            text_log_file=config.paths.text_log_file,
             audit_file=config.paths.audit_file,
+            allow_sensitive=config.logging.allow_sensitive,
+        )
+        self._safe_log(
+            "runtime.init",
+            transport=self.config.server.transport,
+            config_path=str(self.config.config_path),
         )
 
     @classmethod
@@ -160,6 +173,14 @@ class WispHandRuntime:
             self.config.vision.mode == "assist"
             and bool(self.config.vision.model)
             and bool(self.config.vision.base_url)
+        )
+        self._safe_log(
+            "dependencies.probe",
+            hyprland_detected=result["hyprland_detected"],
+            capture_available=result["capture_available"],
+            input_available=result["input_available"],
+            vision_available=result["vision_available"],
+            missing_binaries=result["missing_binaries"],
         )
         return result
 
@@ -189,11 +210,20 @@ class WispHandRuntime:
                 "expires_at": record.expires_at.isoformat(),
             }
 
-        return self._run_tool(
+        result = self._run_tool(
             "hand.session.open",
             action=action,
             scope=requested_scope,
         )
+        self._safe_log(
+            "session.opened",
+            session_id=result["session_id"],
+            scope=result["scope"],
+            armed=result["armed"],
+            dry_run=result["dry_run"],
+            expires_at=result["expires_at"],
+        )
+        return result
 
     def close_session(self, *, session_id: str) -> SessionCloseResult:
         def action() -> SessionCloseResult:
@@ -204,11 +234,17 @@ class WispHandRuntime:
                 "closed_at": self._now_provider().isoformat(),
             }
 
-        return self._run_tool(
+        result = self._run_tool(
             "hand.session.close",
             action=action,
             session_id=session_id,
         )
+        self._safe_log(
+            "session.closed",
+            session_id=result["session_id"],
+            closed_at=result["closed_at"],
+        )
+        return result
 
     def get_topology(self) -> JSONValue:
         return self._run_tool(
@@ -257,11 +293,24 @@ class WispHandRuntime:
                 downscale=downscale,
             )
 
-        return self._run_tool(
+        result = self._run_tool(
             "hand.capture.screen",
             action=action,
             session_id=session_id,
         )
+        if isinstance(result, dict):
+            self._safe_log(
+                "capture.screen",
+                capture_id=result.get("capture_id"),
+                target=result.get("target"),
+                width=result.get("width"),
+                height=result.get("height"),
+                downscale=result.get("downscale"),
+                inline=inline,
+                with_cursor=with_cursor,
+                path=result.get("path"),
+            )
+        return result
 
     def wait(self, *, session_id: str, duration_ms: int) -> WaitResult:
         if duration_ms < 0:
@@ -391,7 +440,14 @@ class WispHandRuntime:
             }
 
         with self._vision_audit_context(image=image, provider=provider):
-            return self._run_tool("hand.vision.describe", action=action)
+            result = self._run_tool("hand.vision.describe", action=action)
+            self._safe_log(
+                "vision.describe",
+                latency_ms=result["latency_ms"],
+                input_source=result["input_source"],
+                capture_id=result["capture_id"],
+            )
+            return result
 
     def vision_locate(
         self,
@@ -427,7 +483,16 @@ class WispHandRuntime:
             }
 
         with self._vision_audit_context(image=image, provider=provider):
-            return self._run_tool("hand.vision.locate", action=action)
+            result = self._run_tool("hand.vision.locate", action=action)
+            self._safe_log(
+                "vision.locate",
+                latency_ms=result["latency_ms"],
+                input_source=result["input_source"],
+                capture_id=result["capture_id"],
+                target=result["target"],
+                candidates=len(result["candidates"]),
+            )
+            return result
 
     def pointer_move(self, *, session_id: str, x: int, y: int) -> InputDispatchResult:
         policy_action: dict[str, JSONValue] = {
@@ -888,9 +953,22 @@ class WispHandRuntime:
     def _audit_context(self, values: dict[str, JSONValue]):
         current = _AUDIT_CONTEXT.get() or {}
         token: Token[dict[str, JSONValue] | None] = _AUDIT_CONTEXT.set({**current, **values})
+        restore: dict[str, JSONValue] = {key: current[key] for key in values if key in current}
+        drop = [key for key in values if key not in current]
         try:
+            try:
+                bind_contextvars(**values)
+            except Exception:  # pragma: no cover - defensive
+                pass
             yield
         finally:
+            try:
+                if drop:
+                    unbind_contextvars(*drop)
+                if restore:
+                    bind_contextvars(**restore)
+            except Exception:  # pragma: no cover - defensive
+                pass
             _AUDIT_CONTEXT.reset(token)
 
     def _run_tool(
@@ -905,28 +983,49 @@ class WispHandRuntime:
         try:
             result = action()
         except WispHandError as exc:
+            status = self._audit_status_for_error(exc.code)
+            latency_ms = self._elapsed_ms(started)
+            error = exc.to_payload()
             self._audit_logger.record(
                 self._build_audit_record(
                     tool_name=tool_name,
-                    status=self._audit_status_for_error(exc.code),
-                    latency_ms=self._elapsed_ms(started),
+                    status=status,
+                    latency_ms=latency_ms,
                     session_id=session_id,
                     scope=scope,
-                    error=exc.to_payload(),
+                    error=error,
                 )
+            )
+            self._safe_tool_log(
+                tool_name=tool_name,
+                status=status,
+                latency_ms=latency_ms,
+                session_id=session_id,
+                scope=scope,
+                error=error,
             )
             raise
         except Exception as exc:  # pragma: no cover - defensive wrapper
             error = internal_error(str(exc))
+            latency_ms = self._elapsed_ms(started)
+            payload = error.to_payload()
             self._audit_logger.record(
                 self._build_audit_record(
                     tool_name=tool_name,
                     status="error",
-                    latency_ms=self._elapsed_ms(started),
+                    latency_ms=latency_ms,
                     session_id=session_id,
                     scope=scope,
-                    error=error.to_payload(),
+                    error=payload,
                 )
+            )
+            self._safe_tool_log(
+                tool_name=tool_name,
+                status="error",
+                latency_ms=latency_ms,
+                session_id=session_id,
+                scope=scope,
+                error=payload,
             )
             raise error from exc
 
@@ -936,15 +1035,24 @@ class WispHandRuntime:
             payload_scope = result.get("scope", payload_scope)  # type: ignore[assignment]
             payload_session_id = result.get("session_id", payload_session_id)  # type: ignore[assignment]
 
+        latency_ms = self._elapsed_ms(started)
         self._audit_logger.record(
             self._build_audit_record(
                 tool_name=tool_name,
                 status="ok",
-                latency_ms=self._elapsed_ms(started),
+                latency_ms=latency_ms,
                 session_id=payload_session_id,
                 scope=payload_scope,
                 result=result,
             )
+        )
+        self._safe_tool_log(
+            tool_name=tool_name,
+            status="ok",
+            latency_ms=latency_ms,
+            session_id=payload_session_id,
+            scope=payload_scope,
+            error=None,
         )
         return result
 
@@ -985,7 +1093,15 @@ class WispHandRuntime:
                 "action": result_action,  # type: ignore[typeddict-item]
             }
 
-        return self._run_tool(tool_name, action=action, session_id=session_id)
+        result = self._run_tool(tool_name, action=action, session_id=session_id)
+        self._safe_log(
+            "input.dispatch",
+            tool_name=tool_name,
+            session_id=session_id,
+            dispatch_state=result["dispatch_state"],
+            action=result["action"],
+        )
+        return result
 
     def _prepare_pointer_target(
         self,
@@ -1127,3 +1243,42 @@ class WispHandRuntime:
     @staticmethod
     def _elapsed_ms(started: float) -> int:
         return max(0, round((perf_counter() - started) * 1000))
+
+    def _safe_log(self, event: str, **fields: JSONValue) -> None:
+        try:
+            self._logger.info(event, **fields)
+        except Exception:  # pragma: no cover - logging must be best-effort
+            return
+
+    def _safe_tool_log(
+        self,
+        *,
+        tool_name: str,
+        status: str,
+        latency_ms: int,
+        session_id: str | None,
+        scope: ScopeEnvelope | None,
+        error: dict[str, JSONValue] | None,
+    ) -> None:
+        event = f"tool.call.{status}"
+        payload: dict[str, JSONValue] = {
+            "tool_name": tool_name,
+            "status": status,
+            "latency_ms": latency_ms,
+        }
+        if session_id is not None:
+            payload["session_id"] = session_id
+        if scope is not None:
+            payload["scope"] = scope
+        if error is not None:
+            payload["error"] = error
+
+        try:
+            if status == "denied":
+                self._logger.warning(event, **payload)
+            elif status == "error":
+                self._logger.error(event, **payload)
+            else:
+                self._logger.info(event, **payload)
+        except Exception:  # pragma: no cover - logging must be best-effort
+            return
