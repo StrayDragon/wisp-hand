@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 from time import perf_counter, sleep
 from uuid import uuid4
 
@@ -89,6 +90,7 @@ class WispHandRuntime:
         except Exception:  # pragma: no cover - logging must never break runtime
             pass
         self._logger = get_logger("runtime")
+        self._tool_lock = RLock()
         self.runtime_instance_id = str(uuid4())
         self._coordinates_last_fingerprint: str | None = None
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
@@ -1056,7 +1058,10 @@ class WispHandRuntime:
     ) -> JSONValue:
         started = perf_counter()
         try:
-            result = action()
+            # Tools may be executed from multiple threads when using MCP tasks.
+            # Serialize access to internal runtime state to keep session/audit behavior stable.
+            with self._tool_lock:
+                result = action()
         except WispHandError as exc:
             exc.details.setdefault("runtime_instance_id", self.runtime_instance_id)
             exc.details.setdefault("started_at", self.started_at)
