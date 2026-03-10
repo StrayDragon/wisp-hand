@@ -29,13 +29,15 @@ class DependencyProbe:
             name for name in self._optional_binaries if self._binary_resolver(name) is None
         ]
         hyprland_detected = bool(self._env.get("HYPRLAND_INSTANCE_SIGNATURE"))
-        capture_available = hyprland_detected and not missing_binaries and "hand.capture.screen" in implemented_tools
+        capture_available = (
+            hyprland_detected and not missing_binaries and "wisp_hand.capture.screen" in implemented_tools
+        )
         input_available = (
             hyprland_detected
             and not missing_binaries
             and "wtype" not in missing_optional
             and any(
-                tool.startswith("hand.pointer.") or tool.startswith("hand.keyboard.")
+                tool.startswith("wisp_hand.pointer.") or tool.startswith("wisp_hand.keyboard.")
                 for tool in implemented_tools
             )
         )

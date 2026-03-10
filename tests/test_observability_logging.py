@@ -71,7 +71,7 @@ def test_runtime_json_lines_include_required_fields(tmp_path: Path) -> None:
     tool_calls = [
         entry
         for entry in entries
-        if entry.get("event") == "tool.call.ok" and entry.get("tool_name") == "hand.capabilities"
+        if entry.get("event") == "tool.call.ok" and entry.get("tool_name") == "wisp_hand.capabilities"
     ]
     assert tool_calls
     assert tool_calls[0]["status"] == "ok"
@@ -109,7 +109,7 @@ def test_default_scrubbing_hides_keyboard_text_and_inline_base64(tmp_path: Path)
     runtime._audit_logger.record(  # noqa: SLF001 - test verifies audit scrubbing behaviour
         {
             "timestamp": "2026-03-10T00:00:00+00:00",
-            "tool_name": "hand.vision.describe",
+            "tool_name": "wisp_hand.vision.describe",
             "status": "ok",
             "latency_ms": 1,
             "result": {"inline_image": base64_payload},
@@ -127,4 +127,3 @@ def test_default_scrubbing_hides_keyboard_text_and_inline_base64(tmp_path: Path)
     audit_text = audit_path.read_text(encoding="utf-8")
     assert "super-secret" not in audit_text
     assert base64_payload not in audit_text
-

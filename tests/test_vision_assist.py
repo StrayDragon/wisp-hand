@@ -120,7 +120,7 @@ def test_vision_disabled_mode_returns_structured_error(tmp_path: Path) -> None:
 
     async def run_test() -> None:
         result = await server.mcp.call_tool(
-            "hand.vision.describe",
+            "wisp_hand.vision.describe",
             {"inline_image": encode_png(4, 4, color=(1, 2, 3))},
         )
         assert result.isError is True
@@ -203,7 +203,7 @@ def test_vision_locate_uses_capture_artifacts_and_records_audit_fields(tmp_path:
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()
     entries = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
-    locate_entry = next(entry for entry in entries if entry["tool_name"] == "hand.vision.locate")
+    locate_entry = next(entry for entry in entries if entry["tool_name"] == "wisp_hand.vision.locate")
     assert locate_entry["input_source"] == "capture"
     assert locate_entry["capture_id"] == "cap-1"
     assert locate_entry["provider"] == "ollama"

@@ -228,14 +228,14 @@ def test_input_tools_return_structured_denials_and_scope_mapping(tmp_path: Path)
 
     async def run_test() -> None:
         not_armed = await server.mcp.call_tool(
-            "hand.pointer.move",
+            "wisp_hand.pointer.move",
             {"session_id": unarmed["session_id"], "x": 10, "y": 20},
         )
         assert not_armed.isError is True
         assert not_armed.structuredContent["code"] == "session_not_armed"
 
         out_of_scope = await server.mcp.call_tool(
-            "hand.pointer.click",
+            "wisp_hand.pointer.click",
             {"session_id": armed["session_id"], "x": 301, "y": 10},
         )
         assert out_of_scope.isError is True
@@ -271,7 +271,7 @@ def test_dry_run_and_audit_cover_ok_denied_and_error(tmp_path: Path) -> None:
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()
     entries = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
-    statuses = {entry["status"] for entry in entries if entry["tool_name"].startswith("hand.")}
+    statuses = {entry["status"] for entry in entries if entry["tool_name"].startswith("wisp_hand.")}
     assert {"ok", "denied", "error"} <= statuses
 
 

@@ -324,7 +324,10 @@ max_concurrency = 1
     server = WispHandServer(runtime)
 
     async def run_test() -> None:
-        result = await server.mcp.call_tool("hand.vision.locate", {"capture_id": capture_id, "target": "submit"})
+        result = await server.mcp.call_tool(
+            "wisp_hand.vision.locate",
+            {"capture_id": capture_id, "target": "submit"},
+        )
         assert result.isError is False
         payload = result.structuredContent
         assert payload["candidates_image"] == [

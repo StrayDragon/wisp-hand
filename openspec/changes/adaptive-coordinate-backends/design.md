@@ -35,8 +35,8 @@ Wisp Hand 目前的 scope/input/capture/vision 都默认使用 Hyprland/Wayland 
 
 我们选择以 **layout/logical px** 作为对外唯一“动作坐标系”:
 
-- `hand.session.open` 的 scope target (region/monitor/window/desktop) 使用 layout 坐标.
-- `hand.pointer.*` 的 `x/y` 解释为 scope 内 layout px.
+- `wisp_hand.session.open` 的 scope target (region/monitor/window/desktop) 使用 layout 坐标.
+- `wisp_hand.pointer.*` 的 `x/y` 解释为 scope 内 layout px.
 
 截图与视觉结果仍然存在 image px, 但必须通过显式字段连接:
 
@@ -97,11 +97,10 @@ layout px (scope/source_bounds)  <---- pixel_ratio ---->  image px (png width/he
 
 ## Migration Plan
 
-- 本 change 引入 **BREAKING** 的 `hand.vision.locate` schema 调整(显式区分 scope/image 坐标). 同步更新 tests 与 examples.
+- 本 change 引入 **BREAKING** 的 `wisp_hand.vision.locate` schema 调整(显式区分 scope/image 坐标). 同步更新 tests 与 examples.
 - 在引入新 `[coordinates]` 配置段后, 旧配置不做兼容; 所有内置示例与文档统一升级.
 
 ## Open Questions
 
 - `grim` 对 `-g geometry` 与 `-o output` 的坐标语义是否在所有 wlroots/hyprland 版本上稳定一致? 需要用诊断脚本在多机型上确认.
 - 对跨 monitor capture 的 mapping, v1 是否直接拒绝以确保确定性, 还是输出分段映射并在 agent 侧处理?
-

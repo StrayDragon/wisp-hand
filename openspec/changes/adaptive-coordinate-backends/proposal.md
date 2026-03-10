@@ -11,9 +11,9 @@
   - `grim-probe`(被动探针, 更可靠, 通过截图像素比值反推)
   - `active-pointer-probe`(可选主动校准, 需要显式确认, 最高置信)
 - 收敛对外坐标契约: 所有 scope/session/pointer 的坐标统一为 **Hyprland layout/logical px**; 所有截图图像的 `width/height` 统一为 **image px**; 两者之间通过明确的映射字段连接.
-- `hand.desktop.get_topology` 增强: 为每个 monitor 输出规范化的 `layout_bounds` 与 `physical_size`/`scale`, 并返回坐标后端选择结果与置信度, 便于 agent 与排障.
-- `hand.capture.screen` 增强: capture 元数据与返回值补齐可逆映射上下文(例如 `pixel_ratio_x/y`, `source_bounds` 坐标系声明, downscale 影响), 以便把 image px 稳定映射回 scope/layout px.
-- **BREAKING**: `hand.vision.locate` 输出字段收敛为显式坐标系, 避免歧义:
+- `wisp_hand.desktop.get_topology` 增强: 为每个 monitor 输出规范化的 `layout_bounds` 与 `physical_size`/`scale`, 并返回坐标后端选择结果与置信度, 便于 agent 与排障.
+- `wisp_hand.capture.screen` 增强: capture 元数据与返回值补齐可逆映射上下文(例如 `pixel_ratio_x/y`, `source_bounds` 坐标系声明, downscale 影响), 以便把 image px 稳定映射回 scope/layout px.
+- **BREAKING**: `wisp_hand.vision.locate` 输出字段收敛为显式坐标系, 避免歧义:
   - 返回 `candidates_scope`(scope/layout px) 作为默认可点击坐标
   - 同时返回 `candidates_image`(image px) 作为调试与高级 fallback
 - scoped input 修正: virtual pointer `motion_absolute` 的 extent 计算改为使用规范化的 desktop/layout bounds, 避免在 mixed-scale 多显示器下的归一化漂移.
@@ -36,4 +36,3 @@
 - 影响核心模块: `hyprland.py`, `capture.py`, `runtime.py`, `input_backend.py`, `vision.py`, `models.py`, `config.py` 以及相关 tests/examples.
 - 引入新的运行时配置段(例如 `[coordinates]`), 并新增/调整 smoke 脚本以支持真实环境验证.
 - 不新增必须的外部依赖; `grim`/`hyprctl` 已是必需链路, 探针复用现有能力与 Pillow 解析图像尺寸.
-

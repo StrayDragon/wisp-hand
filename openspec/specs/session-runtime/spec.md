@@ -5,25 +5,25 @@
 ## Requirements
 ### Requirement: 基础能力必须可自检
 
-Wisp Hand 服务 MUST 暴露 `hand.capabilities` 工具，用于报告当前环境的能力状态、关键依赖以及缺失项，而不是把环境探测分散到后续功能里。
+Wisp Hand 服务 MUST 暴露 `wisp_hand.capabilities` 工具，用于报告当前环境的能力状态、关键依赖以及缺失项，而不是把环境探测分散到后续功能里。
 
 #### Scenario: 依赖完整时返回能力矩阵
 
-- **WHEN** 客户端调用 `hand.capabilities` 且运行环境满足基础依赖
+- **WHEN** 客户端调用 `wisp_hand.capabilities` 且运行环境满足基础依赖
 - **THEN** 服务返回 `hyprland_detected`、`capture_available`、`input_available`、`vision_available`、`required_binaries`、`missing_binaries` 等结构化字段
 
 #### Scenario: 缺少依赖时仍能完成自检
 
-- **WHEN** 客户端调用 `hand.capabilities` 且 `hyprctl` 或其他关键依赖缺失
+- **WHEN** 客户端调用 `wisp_hand.capabilities` 且 `hyprctl` 或其他关键依赖缺失
 - **THEN** 服务 MUST 返回缺失项列表与能力降级结果，而不是崩溃、挂起或输出非结构化报错
 
 ### Requirement: 服务必须支持显式 session 生命周期
 
-Wisp Hand 服务 MUST 通过 `hand.session.open` 与 `hand.session.close` 管理显式 session，并为每个 session 维护唯一 `session_id`、默认 scope、`armed`、`dry_run` 与 `expires_at` 状态。
+Wisp Hand 服务 MUST 通过 `wisp_hand.session.open` 与 `wisp_hand.session.close` 管理显式 session，并为每个 session 维护唯一 `session_id`、默认 scope、`armed`、`dry_run` 与 `expires_at` 状态。
 
 #### Scenario: 打开 session 返回完整状态
 
-- **WHEN** 客户端调用 `hand.session.open` 并提供 scope、arming、dry-run 与 TTL 参数
+- **WHEN** 客户端调用 `wisp_hand.session.open` 并提供 scope、arming、dry-run 与 TTL 参数
 - **THEN** 服务返回新的 `session_id`、标准化后的 `scope`、`armed`、`dry_run` 与 `expires_at`
 
 #### Scenario: 关闭后的 session 不再可用
