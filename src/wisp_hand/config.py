@@ -19,7 +19,33 @@ class ServerConfig(BaseModel):
     transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
     host: str = "127.0.0.1"
     port: int = 8000
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+LogFormat = Literal["json", "rich", "plain"]
+
+
+class LoggingConsoleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    format: LogFormat = "rich"
+
+
+class LoggingFileConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    format: LogFormat = "json"
+
+
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    level: LogLevel = "INFO"
+    console: LoggingConsoleConfig = Field(default_factory=LoggingConsoleConfig)
+    file: LoggingFileConfig = Field(default_factory=LoggingFileConfig)
+    allow_sensitive: bool = False
 
 
 class PathsConfig(BaseModel):
@@ -27,7 +53,7 @@ class PathsConfig(BaseModel):
 
     state_dir: Path = DEFAULT_STATE_DIR
     audit_file: Path | None = DEFAULT_STATE_DIR / "audit.jsonl"
-    text_log_file: Path | None = DEFAULT_STATE_DIR / "runtime.log"
+    runtime_log_file: Path | None = DEFAULT_STATE_DIR / "runtime.jsonl"
     capture_dir: Path = DEFAULT_STATE_DIR / "captures"
 
 
@@ -77,6 +103,7 @@ class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     server: ServerConfig = Field(default_factory=ServerConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
@@ -146,7 +173,7 @@ def _resolve_paths(
         update={
             "state_dir": resolved_state_dir,
             "audit_file": _make_optional_path_absolute(config.paths.audit_file, base_dir),
-            "text_log_file": _make_optional_path_absolute(config.paths.text_log_file, base_dir),
+            "runtime_log_file": _make_optional_path_absolute(config.paths.runtime_log_file, base_dir),
             "capture_dir": (
                 _make_path_absolute(config.paths.capture_dir, base_dir)
                 if capture_dir_explicit
@@ -173,6 +200,6 @@ def _make_optional_path_absolute(path: Path | None, base_dir: Path) -> Path | No
 def _ensure_runtime_directories(config: RuntimeConfig) -> None:
     config.paths.state_dir.mkdir(parents=True, exist_ok=True)
     config.paths.capture_dir.mkdir(parents=True, exist_ok=True)
-    for path in (config.paths.audit_file, config.paths.text_log_file):
+    for path in (config.paths.audit_file, config.paths.runtime_log_file):
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

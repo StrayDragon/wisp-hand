@@ -165,7 +165,7 @@ transport = "stdio"
 [paths]
 state_dir = "./state"
 audit_file = "./state/audit.jsonl"
-text_log_file = "./state/runtime.log"
+runtime_log_file = "./state/runtime.jsonl"
 
 [session]
 default_ttl_seconds = 30
