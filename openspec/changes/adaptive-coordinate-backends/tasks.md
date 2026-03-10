@@ -14,11 +14,11 @@
 ## 3. Runtime/Tool 接入
 
 - [x] 3.1 在 runtime 初始化阶段生成/加载 `CoordinateMap`, 并记录后端选择与置信度日志事件
-- [x] 3.2 升级 `hand.desktop.get_topology` 输出: 增加 `coordinate_backend`、`desktop_layout_bounds`、`monitors[*].layout_bounds/physical_size/scale/pixel_ratio`
+- [x] 3.2 升级 `wisp_hand.desktop.get_topology` 输出: 增加 `coordinate_backend`、`desktop_layout_bounds`、`monitors[*].layout_bounds/physical_size/scale/pixel_ratio`
 - [x] 3.3 修复 `desktop_bounds`/monitor bounds 的坐标空间: 统一使用 `layout_bounds` 作为 desktop/layout extent
 - [x] 3.4 修复 virtual pointer `motion_absolute` extent: 使用 `desktop_layout_bounds`(layout px) 作为归一化边界
-- [x] 3.5 升级 `hand.capture.screen` 元数据: 补齐 `source_coordinate_space/image_coordinate_space/pixel_ratio_x/pixel_ratio_y` 并处理跨 monitor 的映射边界
-- [x] 3.6 **BREAKING** 升级 `hand.vision.locate` 输出: 返回 `candidates_scope` + `candidates_image`, 并基于 capture 映射自动换算
+- [x] 3.5 升级 `wisp_hand.capture.screen` 元数据: 补齐 `source_coordinate_space/image_coordinate_space/pixel_ratio_x/pixel_ratio_y` 并处理跨 monitor 的映射边界
+- [x] 3.6 **BREAKING** 升级 `wisp_hand.vision.locate` 输出: 返回 `candidates_scope` + `candidates_image`, 并基于 capture 映射自动换算
 
 ## 4. 诊断与示例
 
@@ -30,6 +30,6 @@
 
 - [x] 5.1 单测: `hyprctl-infer` 在 scale=1.25 + 1.0 双屏下能产出正确的 `desktop_layout_bounds`
 - [x] 5.2 单测: capture 元数据包含映射字段且 `pixel_ratio` 与截图尺寸一致
-- [x] 5.3 单测: `hand.vision.locate` 的 `candidates_scope` 不随 scale 漂移(基于合成 capture/metadata 断言换算)
+- [x] 5.3 单测: `wisp_hand.vision.locate` 的 `candidates_scope` 不随 scale 漂移(基于合成 capture/metadata 断言换算)
 - [x] 5.4 单测: pointer dispatch 的 extent 使用 layout bounds(避免把 physical width 当 extent)
 - [x] 5.5 真实环境 smoke: 生成 JSON 报告验证缩放比例与 stdout 安全(可选 pointer 校准需显式确认)

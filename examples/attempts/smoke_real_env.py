@@ -365,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         report["checks"]["capabilities"] = _call_and_capture_error(
             runtime.capabilities,
             timeout_seconds=args.step_timeout_seconds,
-            label="hand.capabilities",
+            label="wisp_hand.capabilities",
         )
         write_out()
 
@@ -374,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         report["checks"]["topology"] = _call_and_capture_error(
             runtime.get_topology,
             timeout_seconds=args.step_timeout_seconds,
-            label="hand.desktop.get_topology",
+            label="wisp_hand.desktop.get_topology",
         )
         write_out()
 
@@ -462,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
                 x=10,
                 y=10,
                 timeout_seconds=args.step_timeout_seconds,
-                label="hand.pointer.move (unarmed)",
+                label="wisp_hand.pointer.move (unarmed)",
             )
         finally:
             runtime.close_session(session_id=unarmed["session_id"])
@@ -484,21 +484,21 @@ def main(argv: list[str] | None = None) -> int:
                 y=10,
                 button="left",
                 timeout_seconds=args.step_timeout_seconds,
-                label="hand.pointer.click (dry-run)",
+                label="wisp_hand.pointer.click (dry-run)",
             )
             report["checks"]["safety"]["dry_run_keyboard_press"] = _call_and_capture_error(
                 runtime.keyboard_press,
                 session_id=dry["session_id"],
                 keys=["ctrl", "a"],
                 timeout_seconds=args.step_timeout_seconds,
-                label="hand.keyboard.press (dry-run)",
+                label="wisp_hand.keyboard.press (dry-run)",
             )
             report["checks"]["safety"]["dry_run_keyboard_type"] = _call_and_capture_error(
                 runtime.keyboard_type,
                 session_id=dry["session_id"],
                 text="wisp-hand-dry-run",
                 timeout_seconds=args.step_timeout_seconds,
-                label="hand.keyboard.type (dry-run)",
+                label="wisp_hand.keyboard.type (dry-run)",
             )
         finally:
             runtime.close_session(session_id=dry["session_id"])
@@ -518,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
                 session_id=armed["session_id"],
                 keys=["ctrl", "alt", "delete"],
                 timeout_seconds=args.step_timeout_seconds,
-                label="hand.keyboard.press (dangerous shortcut)",
+                label="wisp_hand.keyboard.press (dangerous shortcut)",
             )
         finally:
             runtime.close_session(session_id=armed["session_id"])
@@ -547,7 +547,7 @@ def main(argv: list[str] | None = None) -> int:
                     x=20,
                     y=20,
                     timeout_seconds=args.step_timeout_seconds,
-                    label="hand.pointer.move (input dry-run)",
+                    label="wisp_hand.pointer.move (input dry-run)",
                 )
                 report["checks"]["input"]["results"]["pointer_click"] = _call_and_capture_error(
                     runtime.pointer_click,
@@ -556,7 +556,7 @@ def main(argv: list[str] | None = None) -> int:
                     y=20,
                     button="left",
                     timeout_seconds=args.step_timeout_seconds,
-                    label="hand.pointer.click (input dry-run)",
+                    label="wisp_hand.pointer.click (input dry-run)",
                 )
                 report["checks"]["input"]["results"]["pointer_scroll"] = _call_and_capture_error(
                     runtime.pointer_scroll,
@@ -565,14 +565,14 @@ def main(argv: list[str] | None = None) -> int:
                     y=20,
                     delta_y=-120,
                     timeout_seconds=args.step_timeout_seconds,
-                    label="hand.pointer.scroll (input dry-run)",
+                    label="wisp_hand.pointer.scroll (input dry-run)",
                 )
                 report["checks"]["input"]["results"]["keyboard_type"] = _call_and_capture_error(
                     runtime.keyboard_type,
                     session_id=input_session["session_id"],
                     text="wisp-hand-dry-run-input",
                     timeout_seconds=args.step_timeout_seconds,
-                    label="hand.keyboard.type (input dry-run)",
+                    label="wisp_hand.keyboard.type (input dry-run)",
                 )
             finally:
                 runtime.close_session(session_id=input_session["session_id"])
@@ -608,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
                         x=40,
                         y=40,
                         timeout_seconds=args.step_timeout_seconds,
-                        label="hand.pointer.move (real)",
+                        label="wisp_hand.pointer.move (real)",
                     )
                     report["progress"] = {"phase": "input", "step": "real.pointer_click", "updated_at": time.time()}
                     write_out()
@@ -619,7 +619,7 @@ def main(argv: list[str] | None = None) -> int:
                         y=40,
                         button="left",
                         timeout_seconds=args.step_timeout_seconds,
-                        label="hand.pointer.click (real)",
+                        label="wisp_hand.pointer.click (real)",
                     )
                     report["progress"] = {"phase": "input", "step": "real.pointer_scroll", "updated_at": time.time()}
                     write_out()
@@ -630,7 +630,7 @@ def main(argv: list[str] | None = None) -> int:
                         y=40,
                         delta_y=-120,
                         timeout_seconds=args.step_timeout_seconds,
-                        label="hand.pointer.scroll (real)",
+                        label="wisp_hand.pointer.scroll (real)",
                     )
                     report["progress"] = {"phase": "input", "step": "real.keyboard_type", "updated_at": time.time()}
                     write_out()
@@ -639,7 +639,7 @@ def main(argv: list[str] | None = None) -> int:
                         session_id=input_session["session_id"],
                         text="wisp-hand-real-input",
                         timeout_seconds=args.step_timeout_seconds,
-                        label="hand.keyboard.type (real)",
+                        label="wisp_hand.keyboard.type (real)",
                     )
                 finally:
                     runtime.close_session(session_id=input_session["session_id"])
@@ -672,7 +672,7 @@ def main(argv: list[str] | None = None) -> int:
                     capture_id=str(cap.get("capture_id")),
                     prompt="Describe the screenshot briefly.",
                     timeout_seconds=max(0.0, args.step_timeout_seconds * 4),
-                    label="hand.vision.describe",
+                    label="wisp_hand.vision.describe",
                 )
             finally:
                 runtime.close_session(session_id=opened["session_id"])

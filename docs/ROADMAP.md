@@ -86,9 +86,9 @@
 
 输出：
 
-- `hand.desktop.get_topology`
-- `hand.cursor.get_position`
-- `hand.capture.screen`
+- `wisp_hand.desktop.get_topology`
+- `wisp_hand.cursor.get_position`
+- `wisp_hand.capture.screen`
 
 验收：
 
@@ -113,9 +113,9 @@
 
 输出：
 
-- `hand.pointer.*`
-- `hand.keyboard.*`
-- `hand.session.open/close`
+- `wisp_hand.pointer.*`
+- `wisp_hand.keyboard.*`
+- `wisp_hand.session.open/close`
 
 验收：
 
@@ -132,9 +132,9 @@
 
 范围：
 
-- `hand.batch.run`
-- `hand.wait`
-- `hand.capture.diff`
+- `wisp_hand.batch.run`
+- `wisp_hand.wait`
+- `wisp_hand.capture.diff`
 - before/after capture hooks
 
 输出：
@@ -164,8 +164,8 @@
 
 输出：
 
-- `hand.vision.describe`
-- `hand.vision.locate`
+- `wisp_hand.vision.describe`
+- `wisp_hand.vision.locate`
 
 验收：
 

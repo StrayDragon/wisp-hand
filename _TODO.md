@@ -5,14 +5,14 @@
 
 - uv run pytest -q 通过，24 passed。
 - 真实 Hyprland/Wayland 环境下，只读链路已跑通：
-  - hand.capabilities
-  - hand.session.open/close
-  - hand.desktop.get_topology
-  - hand.cursor.get_position
-  - hand.capture.screen
-  - hand.wait
-  - hand.capture.diff
-  - hand.batch.run
+  - wisp_hand.capabilities
+  - wisp_hand.session.open/close
+  - wisp_hand.desktop.get_topology
+  - wisp_hand.cursor.get_position
+  - wisp_hand.capture.screen
+  - wisp_hand.wait
+  - wisp_hand.capture.diff
+  - wisp_hand.batch.run
 - 安全护栏的真实无副作用验证已跑通：
   - 未 armed 的 pointer 调用会被拒绝
   - dry_run 的 pointer / keyboard 会返回成功结构，但不实际派发

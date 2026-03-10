@@ -101,7 +101,7 @@ class InputPolicy:
         tool_name: str,
         action: dict[str, JSONValue],
     ) -> None:
-        if tool_name != "hand.keyboard.press":
+        if tool_name != "wisp_hand.keyboard.press":
             return
 
         keys = action.get("keys")

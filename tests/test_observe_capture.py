@@ -170,12 +170,12 @@ def test_topology_and_cursor_relative_coordinates(tmp_path: Path) -> None:
     )
 
     async def run_test() -> None:
-        topology = await server.mcp.call_tool("hand.desktop.get_topology", {})
+        topology = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
         assert topology.isError is False
         assert len(topology.structuredContent["monitors"]) == 2
 
         cursor = await server.mcp.call_tool(
-            "hand.cursor.get_position",
+            "wisp_hand.cursor.get_position",
             {"session_id": opened["session_id"]},
         )
         assert cursor.isError is False
@@ -195,7 +195,7 @@ def test_topology_rejects_without_hyprland_environment(tmp_path: Path) -> None:
     server = WispHandServer(runtime)
 
     async def run_test() -> None:
-        result = await server.mcp.call_tool("hand.desktop.get_topology", {})
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
         assert result.isError is True
         assert result.structuredContent["code"] == "unsupported_environment"
 
@@ -216,7 +216,7 @@ def test_capture_scope_creates_artifact_and_metadata(tmp_path: Path) -> None:
 
     async def run_test() -> None:
         result = await server.mcp.call_tool(
-            "hand.capture.screen",
+            "wisp_hand.capture.screen",
             {
                 "session_id": opened["session_id"],
                 "target": "scope",
@@ -298,7 +298,7 @@ def test_capture_dependency_missing_is_structured_error(tmp_path: Path) -> None:
 
     async def run_test() -> None:
         result = await server.mcp.call_tool(
-            "hand.capture.screen",
+            "wisp_hand.capture.screen",
             {"session_id": opened["session_id"], "target": "scope"},
         )
         assert result.isError is True

@@ -41,7 +41,7 @@ class WispHandServer:
 
     def _register_tools(self) -> None:
         @self.mcp.tool(
-            name="hand.capabilities",
+            name="wisp_hand.capabilities",
             description="Report environment capabilities and missing dependencies.",
             structured_output=True,
         )
@@ -49,7 +49,7 @@ class WispHandServer:
             return self._call(self.runtime.capabilities, CapabilityResultModel)
 
         @self.mcp.tool(
-            name="hand.session.open",
+            name="wisp_hand.session.open",
             description="Create a scoped session for future tool calls.",
             structured_output=True,
         )
@@ -71,7 +71,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.session.close",
+            name="wisp_hand.session.close",
             description="Close an existing session.",
             structured_output=True,
         )
@@ -79,7 +79,7 @@ class WispHandServer:
             return self._call(self.runtime.close_session, SessionCloseResultModel, session_id=session_id)
 
         @self.mcp.tool(
-            name="hand.desktop.get_topology",
+            name="wisp_hand.desktop.get_topology",
             description="Return Hyprland monitors, workspaces, active window and window list.",
             structured_output=True,
         )
@@ -87,7 +87,7 @@ class WispHandServer:
             return self._call(self.runtime.get_topology, TopologyResultModel)
 
         @self.mcp.tool(
-            name="hand.cursor.get_position",
+            name="wisp_hand.cursor.get_position",
             description="Return the cursor position in desktop and scope-relative coordinates.",
             structured_output=True,
         )
@@ -95,7 +95,7 @@ class WispHandServer:
             return self._call(self.runtime.get_cursor_position, CursorPositionResultModel, session_id=session_id)
 
         @self.mcp.tool(
-            name="hand.capture.screen",
+            name="wisp_hand.capture.screen",
             description="Capture the current desktop or session-compatible target into the artifact store.",
             structured_output=True,
         )
@@ -117,7 +117,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.wait",
+            name="wisp_hand.wait",
             description="Wait for a fixed duration within a session context.",
             structured_output=True,
         )
@@ -130,7 +130,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.capture.diff",
+            name="wisp_hand.capture.diff",
             description="Compare two captures and return a deterministic pixel diff summary.",
             structured_output=True,
         )
@@ -146,7 +146,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.batch.run",
+            name="wisp_hand.batch.run",
             description="Run a sequence of supported actions inside one session.",
             structured_output=True,
         )
@@ -164,7 +164,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.vision.describe",
+            name="wisp_hand.vision.describe",
             description="Describe an image from a capture artifact or inline image using Ollama vision.",
             structured_output=True,
         )
@@ -182,7 +182,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.vision.locate",
+            name="wisp_hand.vision.locate",
             description="Locate target regions within a captured image using Ollama vision.",
             structured_output=True,
         )
@@ -198,7 +198,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.pointer.move",
+            name="wisp_hand.pointer.move",
             description="Move the pointer to scope-relative coordinates inside an armed session.",
             structured_output=True,
         )
@@ -212,7 +212,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.pointer.click",
+            name="wisp_hand.pointer.click",
             description="Click a pointer button at scope-relative coordinates inside an armed session.",
             structured_output=True,
         )
@@ -232,7 +232,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.pointer.drag",
+            name="wisp_hand.pointer.drag",
             description="Drag a pointer button between two scope-relative coordinates inside an armed session.",
             structured_output=True,
         )
@@ -256,7 +256,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.pointer.scroll",
+            name="wisp_hand.pointer.scroll",
             description="Scroll at scope-relative coordinates inside an armed session.",
             structured_output=True,
         )
@@ -278,7 +278,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.keyboard.type",
+            name="wisp_hand.keyboard.type",
             description="Type text inside an armed session using the shared input safety pipeline.",
             structured_output=True,
         )
@@ -291,7 +291,7 @@ class WispHandServer:
             )
 
         @self.mcp.tool(
-            name="hand.keyboard.press",
+            name="wisp_hand.keyboard.press",
             description="Press a key or key chord inside an armed session using the shared input safety pipeline.",
             structured_output=True,
         )

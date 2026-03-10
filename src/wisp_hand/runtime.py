@@ -55,23 +55,23 @@ from wisp_hand.observability import get_logger, init_logging
 _AUDIT_CONTEXT: ContextVar[dict[str, JSONValue] | None] = ContextVar("_AUDIT_CONTEXT", default=None)
 
 IMPLEMENTED_TOOLS = [
-    "hand.capabilities",
-    "hand.session.open",
-    "hand.session.close",
-    "hand.desktop.get_topology",
-    "hand.cursor.get_position",
-    "hand.capture.screen",
-    "hand.wait",
-    "hand.capture.diff",
-    "hand.batch.run",
-    "hand.vision.describe",
-    "hand.vision.locate",
-    "hand.pointer.move",
-    "hand.pointer.click",
-    "hand.pointer.drag",
-    "hand.pointer.scroll",
-    "hand.keyboard.type",
-    "hand.keyboard.press",
+    "wisp_hand.capabilities",
+    "wisp_hand.session.open",
+    "wisp_hand.session.close",
+    "wisp_hand.desktop.get_topology",
+    "wisp_hand.cursor.get_position",
+    "wisp_hand.capture.screen",
+    "wisp_hand.wait",
+    "wisp_hand.capture.diff",
+    "wisp_hand.batch.run",
+    "wisp_hand.vision.describe",
+    "wisp_hand.vision.locate",
+    "wisp_hand.pointer.move",
+    "wisp_hand.pointer.click",
+    "wisp_hand.pointer.drag",
+    "wisp_hand.pointer.scroll",
+    "wisp_hand.keyboard.type",
+    "wisp_hand.keyboard.press",
 ]
 
 
@@ -171,7 +171,7 @@ class WispHandRuntime:
 
     def capabilities(self) -> CapabilityResult:
         result = self._run_tool(
-            "hand.capabilities",
+            "wisp_hand.capabilities",
             action=lambda: self._dependency_probe.report(
                 config_path=str(self.config.config_path),
                 implemented_tools=IMPLEMENTED_TOOLS,
@@ -219,7 +219,7 @@ class WispHandRuntime:
             }
 
         result = self._run_tool(
-            "hand.session.open",
+            "wisp_hand.session.open",
             action=action,
             scope=requested_scope,
         )
@@ -243,7 +243,7 @@ class WispHandRuntime:
             }
 
         result = self._run_tool(
-            "hand.session.close",
+            "wisp_hand.session.close",
             action=action,
             session_id=session_id,
         )
@@ -260,7 +260,7 @@ class WispHandRuntime:
             coordinate_map = self._resolve_coordinate_map(topology)
             return self._augment_topology(topology=topology, coordinate_map=coordinate_map)
 
-        return self._run_tool("hand.desktop.get_topology", action=action)
+        return self._run_tool("wisp_hand.desktop.get_topology", action=action)
 
     def get_cursor_position(self, *, session_id: str) -> JSONValue:
         def action() -> JSONValue:
@@ -282,7 +282,7 @@ class WispHandRuntime:
             }
 
         return self._run_tool(
-            "hand.cursor.get_position",
+            "wisp_hand.cursor.get_position",
             action=action,
             session_id=session_id,
         )
@@ -316,7 +316,7 @@ class WispHandRuntime:
             )
 
         result = self._run_tool(
-            "hand.capture.screen",
+            "wisp_hand.capture.screen",
             action=action,
             session_id=session_id,
         )
@@ -353,14 +353,14 @@ class WispHandRuntime:
             }
 
         return self._run_tool(
-            "hand.wait",
+            "wisp_hand.wait",
             action=action,
             session_id=session_id,
         )
 
     def capture_diff(self, *, left_capture_id: str, right_capture_id: str) -> CaptureDiffResult:
         return self._run_tool(
-            "hand.capture.diff",
+            "wisp_hand.capture.diff",
             action=lambda: self._capture_diff_engine.diff(
                 left_capture_id=left_capture_id,
                 right_capture_id=right_capture_id,
@@ -384,7 +384,7 @@ class WispHandRuntime:
                 with self._audit_context(
                     {
                         "batch_id": batch_id,
-                        "parent_tool_name": "hand.batch.run",
+                        "parent_tool_name": "wisp_hand.batch.run",
                         "step_index": index,
                         "step_type": compiled.step_type,
                     }
@@ -430,7 +430,7 @@ class WispHandRuntime:
             }
 
         return self._run_tool(
-            "hand.batch.run",
+            "wisp_hand.batch.run",
             action=action,
             session_id=session_id,
         )
@@ -462,7 +462,7 @@ class WispHandRuntime:
             }
 
         with self._vision_audit_context(image=image, provider=provider):
-            result = self._run_tool("hand.vision.describe", action=action)
+            result = self._run_tool("wisp_hand.vision.describe", action=action)
             self._safe_log(
                 "vision.describe",
                 latency_ms=result["latency_ms"],
@@ -544,7 +544,7 @@ class WispHandRuntime:
             }
 
         with self._vision_audit_context(image=image, provider=provider):
-            result = self._run_tool("hand.vision.locate", action=action)
+            result = self._run_tool("wisp_hand.vision.locate", action=action)
             self._safe_log(
                 "vision.locate",
                 latency_ms=result["latency_ms"],
@@ -562,7 +562,7 @@ class WispHandRuntime:
             "scope_position": {"x": x, "y": y},
         }
         return self._run_input_action(
-            "hand.pointer.move",
+            "wisp_hand.pointer.move",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: self._prepare_pointer_target(
@@ -593,7 +593,7 @@ class WispHandRuntime:
             "scope_position": {"x": x, "y": y},
         }
         return self._run_input_action(
-            "hand.pointer.click",
+            "wisp_hand.pointer.click",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: self._prepare_pointer_target(
@@ -629,7 +629,7 @@ class WispHandRuntime:
             "scope_end": {"x": end_x, "y": end_y},
         }
         return self._run_input_action(
-            "hand.pointer.drag",
+            "wisp_hand.pointer.drag",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: self._prepare_pointer_drag(
@@ -673,7 +673,7 @@ class WispHandRuntime:
             "delta_y": delta_y,
         }
         return self._run_input_action(
-            "hand.pointer.scroll",
+            "wisp_hand.pointer.scroll",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: self._prepare_pointer_target(
@@ -702,7 +702,7 @@ class WispHandRuntime:
             "text_length": len(text),
         }
         return self._run_input_action(
-            "hand.keyboard.type",
+            "wisp_hand.keyboard.type",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: {
@@ -725,7 +725,7 @@ class WispHandRuntime:
             "keys": normalized_keys,
         }
         return self._run_input_action(
-            "hand.keyboard.press",
+            "wisp_hand.keyboard.press",
             session_id=session_id,
             policy_action=policy_action,
             prepare=lambda session: {

@@ -12,7 +12,7 @@ from wisp_hand.server import WispHandServer
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="wisp-hand")
+    parser = argparse.ArgumentParser(prog="wisp-hand-mcp")
     parser.add_argument("--config", type=Path, help="Path to the runtime TOML config file.")
     parser.add_argument(
         "--transport",

@@ -37,5 +37,5 @@
 
 #### Scenario: 危险快捷键被策略拒绝
 
-- **WHEN** 客户端调用 `hand.keyboard.press` 且请求的按键组合被策略列为危险动作
+- **WHEN** 客户端调用 `wisp_hand.keyboard.press` 且请求的按键组合被策略列为危险动作
 - **THEN** 服务 MUST 返回 `policy_denied`

@@ -159,27 +159,27 @@ def test_server_registers_tools_and_returns_structured_output(tmp_path: Path) ->
         tools = await server.mcp.list_tools()
         tool_names = {tool.name for tool in tools}
         assert tool_names == {
-            "hand.capabilities",
-            "hand.session.open",
-            "hand.session.close",
-            "hand.desktop.get_topology",
-            "hand.cursor.get_position",
-            "hand.capture.screen",
-            "hand.wait",
-            "hand.capture.diff",
-            "hand.batch.run",
-            "hand.vision.describe",
-            "hand.vision.locate",
-            "hand.pointer.move",
-            "hand.pointer.click",
-            "hand.pointer.drag",
-            "hand.pointer.scroll",
-            "hand.keyboard.type",
-            "hand.keyboard.press",
+            "wisp_hand.capabilities",
+            "wisp_hand.session.open",
+            "wisp_hand.session.close",
+            "wisp_hand.desktop.get_topology",
+            "wisp_hand.cursor.get_position",
+            "wisp_hand.capture.screen",
+            "wisp_hand.wait",
+            "wisp_hand.capture.diff",
+            "wisp_hand.batch.run",
+            "wisp_hand.vision.describe",
+            "wisp_hand.vision.locate",
+            "wisp_hand.pointer.move",
+            "wisp_hand.pointer.click",
+            "wisp_hand.pointer.drag",
+            "wisp_hand.pointer.scroll",
+            "wisp_hand.keyboard.type",
+            "wisp_hand.keyboard.press",
         }
 
         result = await server.mcp.call_tool(
-            "hand.session.open",
+            "wisp_hand.session.open",
             {
                 "scope_type": "region",
                 "scope_target": {"x": 10, "y": 20, "width": 100, "height": 80},
@@ -200,7 +200,7 @@ def test_server_raises_structured_mcp_error_for_missing_session(tmp_path: Path) 
     server = WispHandServer(WispHandRuntime(config=config))
 
     async def run_test() -> None:
-        result = await server.mcp.call_tool("hand.session.close", {"session_id": "missing"})
+        result = await server.mcp.call_tool("wisp_hand.session.close", {"session_id": "missing"})
         payload = result.structuredContent
         assert result.isError is True
         assert payload["code"] == "session_not_found"
@@ -229,11 +229,11 @@ def test_audit_logs_include_required_fields(tmp_path: Path) -> None:
     assert len(lines) == 2
     capability_record, session_record = lines
 
-    assert capability_record["tool_name"] == "hand.capabilities"
+    assert capability_record["tool_name"] == "wisp_hand.capabilities"
     assert capability_record["status"] == "ok"
     assert "latency_ms" in capability_record
 
-    assert session_record["tool_name"] == "hand.session.open"
+    assert session_record["tool_name"] == "wisp_hand.session.open"
     assert session_record["status"] == "ok"
     assert session_record["session_id"] == opened["session_id"]
     assert session_record["scope"]["type"] == "region"

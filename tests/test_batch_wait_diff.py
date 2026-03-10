@@ -306,12 +306,12 @@ def test_batch_runs_steps_in_order_and_audit_links_steps(tmp_path: Path) -> None
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()
     audit_entries = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
-    child_entries = [entry for entry in audit_entries if entry.get("parent_tool_name") == "hand.batch.run"]
+    child_entries = [entry for entry in audit_entries if entry.get("parent_tool_name") == "wisp_hand.batch.run"]
     assert {entry["tool_name"] for entry in child_entries} == {
-        "hand.pointer.move",
-        "hand.wait",
-        "hand.keyboard.type",
-        "hand.capture.screen",
+        "wisp_hand.pointer.move",
+        "wisp_hand.wait",
+        "wisp_hand.keyboard.type",
+        "wisp_hand.capture.screen",
     }
     assert {entry["batch_id"] for entry in child_entries} == {result["batch_id"]}
     assert {entry["step_index"] for entry in child_entries} == {0, 1, 2, 3}
@@ -361,7 +361,7 @@ def test_batch_fail_fast_continue_and_invalid_step_type(tmp_path: Path) -> None:
 
     async def run_invalid() -> None:
         invalid = await server.mcp.call_tool(
-            "hand.batch.run",
+            "wisp_hand.batch.run",
             {
                 "session_id": session["session_id"],
                 "steps": [{"type": "unknown"}],
