@@ -26,7 +26,7 @@ uvx wisp-hand-mcp doctor --json | jq .
 推荐做法：
 
 1. 手动把 Godot 切到前台（确保它是 active window）
-2. 调用 `wisp_hand.desktop.get_topology`，读取 `active_window` 的 `address/class/title`
+2. 调用 `wisp_hand.desktop.get_topology`（默认 `detail=summary`），读取 `active_window` 的 `address/class/title`（需要窗口列表/排障时再用 `detail=full/raw`）
 3. 用其中一个作为后续 `scope_target`
 
 实践建议：
@@ -99,4 +99,3 @@ uvx wisp-hand-mcp doctor --json | jq .
 - `desktop.get_topology` 不要高频轮询：它是“选择 scope/窗口”的工具，不是每一步都要拉的状态。
 - 高频状态判断优先用：`capture.screen` + `capture.diff`（更稳定、可验证、也更契合 GUI 回归）。
 - 需要减少往返时，用：`batch.run` 把多步动作串起来。
-

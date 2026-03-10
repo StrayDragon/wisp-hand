@@ -173,6 +173,7 @@ def test_topology_and_cursor_relative_coordinates(tmp_path: Path) -> None:
         topology = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
         assert topology.isError is False
         assert len(topology.structuredContent["monitors"]) == 2
+        assert "windows" not in topology.structuredContent
 
         cursor = await server.mcp.call_tool(
             "wisp_hand.cursor.get_position",
@@ -187,6 +188,64 @@ def test_topology_and_cursor_relative_coordinates(tmp_path: Path) -> None:
         }
 
     asyncio.run(run_test())
+
+
+def test_topology_detail_full_includes_windows(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "full"})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert isinstance(payload.get("windows"), list)
+        assert payload["windows"]
+        assert "raw" not in payload
+
+    asyncio.run(run_test())
+
+
+def test_topology_detail_raw_includes_raw_payload(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "raw"})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert isinstance(payload.get("windows"), list)
+        assert isinstance(payload.get("raw"), dict)
+        assert "windows" in payload["raw"]
+
+    asyncio.run(run_test())
+
+
+def test_topology_rejects_invalid_detail(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "wat"})
+        assert result.isError is True
+        assert result.structuredContent["code"] == "invalid_parameters"
+
+    asyncio.run(run_test())
+
+
+def test_topology_summary_does_not_query_clients(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
+        assert result.isError is False
+
+    asyncio.run(run_test())
+    assert all(call[:3] != ["hyprctl", "-j", "clients"] for call in runner.calls)
 
 
 def test_topology_rejects_without_hyprland_environment(tmp_path: Path) -> None:

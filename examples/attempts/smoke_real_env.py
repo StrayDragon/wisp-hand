@@ -373,8 +373,9 @@ def main(argv: list[str] | None = None) -> int:
         write_out()
         report["checks"]["topology"] = _call_and_capture_error(
             runtime.get_topology,
+            detail="summary",
             timeout_seconds=args.step_timeout_seconds,
-            label="wisp_hand.desktop.get_topology",
+            label="wisp_hand.desktop.get_topology(detail=summary)",
         )
         write_out()
 

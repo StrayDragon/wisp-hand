@@ -254,11 +254,75 @@ class WispHandRuntime:
         )
         return result
 
-    def get_topology(self) -> JSONValue:
+    def get_topology(self, *, detail: str = "summary") -> JSONValue:
+        allowed = {"summary", "full", "raw"}
+        if detail not in allowed:
+            raise WispHandError(
+                "invalid_parameters",
+                "detail must be one of: summary, full, raw",
+                {"detail": detail, "allowed": sorted(allowed)},
+            )
+
+        hypr_detail = "summary" if detail == "summary" else "full"
+
+        def trim_monitor(value: object) -> object:
+            if not isinstance(value, dict):
+                return value
+            allowed_keys = {
+                "id",
+                "name",
+                "description",
+                "focused",
+                "x",
+                "y",
+                "width",
+                "height",
+                "layout_bounds",
+                "physical_size",
+                "scale",
+                "pixel_ratio",
+            }
+            return {key: value[key] for key in allowed_keys if key in value}
+
+        def trim_workspace(value: object) -> object:
+            if not isinstance(value, dict):
+                return value
+            allowed_keys = {"id", "name", "monitor", "windows", "hasfullscreen"}
+            return {key: value[key] for key in allowed_keys if key in value}
+
+        def trim_window(value: object) -> object:
+            if not isinstance(value, dict):
+                return value
+            allowed_keys = {"address", "class", "title", "workspace", "monitor", "at", "size"}
+            return {key: value[key] for key in allowed_keys if key in value}
+
         def action() -> JSONValue:
-            topology = self._hyprland.get_topology()
-            coordinate_map = self._resolve_coordinate_map(topology)
-            return self._augment_topology(topology=topology, coordinate_map=coordinate_map)
+            raw_topology = self._hyprland.get_topology(detail=hypr_detail)
+            coordinate_map = self._resolve_coordinate_map(raw_topology)
+            augmented = self._augment_topology(topology=raw_topology, coordinate_map=coordinate_map)
+
+            monitors = augmented.get("monitors")
+            workspaces = augmented.get("workspaces")
+            active_workspace = augmented.get("active_workspace")
+            active_window = augmented.get("active_window")
+
+            payload: dict[str, object] = {
+                "coordinate_backend": augmented.get("coordinate_backend", {}),
+                "desktop_layout_bounds": augmented.get("desktop_layout_bounds", {}),
+                "monitors": [trim_monitor(item) for item in monitors] if isinstance(monitors, list) else [],
+                "workspaces": [trim_workspace(item) for item in workspaces] if isinstance(workspaces, list) else [],
+                "active_workspace": trim_workspace(active_workspace) if isinstance(active_workspace, dict) else {},
+                "active_window": trim_window(active_window) if isinstance(active_window, dict) else {},
+            }
+
+            if detail in {"full", "raw"}:
+                windows = augmented.get("windows")
+                payload["windows"] = [trim_window(item) for item in windows] if isinstance(windows, list) else []
+
+            if detail == "raw":
+                payload["raw"] = raw_topology
+
+            return payload
 
         return self._run_tool("wisp_hand.desktop.get_topology", action=action)
 

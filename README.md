@@ -54,6 +54,8 @@ just docs-serve
 - 可选本地视觉：`wisp_hand.vision.describe` / `wisp_hand.vision.locate`（Ollama，可关闭）
 - Scoped 输入：`wisp_hand.pointer.*`、`wisp_hand.keyboard.*`
 
+`wisp_hand.desktop.get_topology` 支持 `detail=summary|full|raw`，默认 `summary`（token-efficient，不返回 `windows` 列表）。需要窗口列表/排障时显式用 `detail=full/raw`。
+
 安全默认值：
 
 - 新 session 默认 `armed=false`，未 armed 的输入会被拒绝

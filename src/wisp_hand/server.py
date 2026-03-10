@@ -91,11 +91,11 @@ class WispHandServer:
 
         @self.mcp.tool(
             name="wisp_hand.desktop.get_topology",
-            description="Return Hyprland monitors, workspaces, active window and window list.",
+            description="Return a Hyprland topology snapshot (detail=summary|full|raw).",
             structured_output=True,
         )
-        def desktop_get_topology() -> Annotated[CallToolResult, dict[str, Any]]:
-            return self._call(self.runtime.get_topology, TopologyResultModel)
+        def desktop_get_topology(detail: str = "summary") -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(self.runtime.get_topology, TopologyResultModel, exclude_none=True, detail=detail)
 
         @self.mcp.tool(
             name="wisp_hand.cursor.get_position",
@@ -423,7 +423,12 @@ class WispHandServer:
                     session_id=arguments["session_id"],
                 )
             case "wisp_hand.desktop.get_topology":
-                return self._call(self.runtime.get_topology, TopologyResultModel)
+                return self._call(
+                    self.runtime.get_topology,
+                    TopologyResultModel,
+                    exclude_none=True,
+                    detail=arguments.get("detail", "summary"),
+                )
             case "wisp_hand.cursor.get_position":
                 return self._call(
                     self.runtime.get_cursor_position,
@@ -649,9 +654,12 @@ class WispHandServer:
         return self._result(payload)
 
     @staticmethod
-    def _call(callback, response_model, /, **kwargs) -> CallToolResult:
+    def _call(callback, response_model, /, *, exclude_none: bool = False, **kwargs) -> CallToolResult:
         try:
-            payload = response_model.model_validate(callback(**kwargs)).model_dump(mode="json")
+            payload = response_model.model_validate(callback(**kwargs)).model_dump(
+                mode="json",
+                exclude_none=exclude_none,
+            )
             return WispHandServer._result(payload)
         except WispHandError as exc:
             return WispHandServer._result(exc.to_payload(), is_error=True)
