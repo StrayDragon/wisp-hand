@@ -2,16 +2,16 @@
 
 ### Requirement: 外部接入方必须可以在连接前执行 runtime preflight
 
-Wisp Hand MUST 提供 `wisp-hand doctor --json` 作为连接前预检入口，并返回机器可读的 runtime discovery 报告。该报告至少必须包含 `version`、`config_path`、`transport`、依赖检查结果、关键路径可写性、启用能力摘要、总体 `status` 与阻塞问题列表。
+Wisp Hand MUST 提供 `wisp-hand-mcp doctor --json` 作为连接前预检入口，并返回机器可读的 runtime discovery 报告。该报告至少必须包含 `version`、`config_path`、`transport`、依赖检查结果、关键路径可写性、启用能力摘要、总体 `status` 与阻塞问题列表。
 
 #### Scenario: 有效环境返回 ready 预检报告
 
-- **WHEN** 操作方在有效配置、依赖完整且关键写路径可用的环境下执行 `wisp-hand doctor --json`
+- **WHEN** 操作方在有效配置、依赖完整且关键写路径可用的环境下执行 `wisp-hand-mcp doctor --json`
 - **THEN** 命令 MUST 返回结构化 JSON 报告，并把总体 `status` 标记为 `ready`
 
 #### Scenario: 阻塞问题会阻止通过预检
 
-- **WHEN** 操作方执行 `wisp-hand doctor --json` 时存在配置非法、关键依赖缺失或关键路径不可写
+- **WHEN** 操作方执行 `wisp-hand-mcp doctor --json` 时存在配置非法、关键依赖缺失或关键路径不可写
 - **THEN** 命令 MUST 以非零状态退出，并返回包含阻塞项详情的结构化报告，而不是直接挂起或只输出自由文本
 
 ### Requirement: 已连接客户端必须可以发现 live runtime 元数据
