@@ -38,7 +38,14 @@
 - 选择 window/monitor selector
 - 提供坐标映射上下文（mixed-scale）
 
-注意：该输出可能较大；在 agent 循环中建议低频调用，尽量用 `capture + diff` 作为主观察链路。
+参数：
+
+- `detail`: `summary|full|raw`（默认 `summary`）
+  - `summary`: token-efficient（不返回 `windows` 列表，且避免执行 `hyprctl -j clients`）
+  - `full`: 返回精简的 `windows` 列表（用于自动化/几何计算）
+  - `raw`: 在 `full` 基础上额外返回 `raw`（包含 Hyprland 原始 JSON，用于排障）
+
+注意：即使有 `summary`，也不建议高频轮询；在 agent 循环中尽量用 `capture + diff` 作为主观察链路。
 
 ### `wisp_hand.cursor.get_position`
 
@@ -101,4 +108,3 @@
 
 - session 必须 `armed=true`
 - 组合键会经过策略过滤（危险快捷键会被拒绝）
-

@@ -229,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
 
         report["progress"] = {"phase": "topology", "updated_at": time.time()}
         try:
-            topology = runtime.get_topology()
+            topology = runtime.get_topology(detail="summary")
             report["checks"]["topology"] = {"ok": True, "value": topology}
         except WispHandError as exc:
             report["checks"]["topology"] = {"ok": False, "error": exc.to_payload()}

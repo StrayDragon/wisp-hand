@@ -22,15 +22,17 @@ class HyprlandAdapter:
         self._runner = runner or CommandRunner()
         self._env = env if env is not None else os.environ
 
-    def get_topology(self) -> dict[str, Any]:
+    def get_topology(self, *, detail: str = "full") -> dict[str, Any]:
         self._ensure_supported_environment()
-        return {
+        topology: dict[str, Any] = {
             "monitors": self._query_json("monitors"),
             "workspaces": self._query_json("workspaces"),
             "active_workspace": self._query_json("activeworkspace"),
             "active_window": self._query_json("activewindow"),
-            "windows": self._query_json("clients"),
         }
+        if detail != "summary":
+            topology["windows"] = self._query_json("clients")
+        return topology
 
     def get_cursor_position(self) -> dict[str, int]:
         self._ensure_supported_environment()

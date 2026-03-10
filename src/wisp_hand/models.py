@@ -375,7 +375,8 @@ class TopologyResultModel(BaseModel):
     workspaces: list[dict[str, Any]]
     active_workspace: dict[str, Any]
     active_window: dict[str, Any]
-    windows: list[dict[str, Any]]
+    windows: list[dict[str, Any]] | None = None
+    raw: dict[str, Any] | None = None
 
 
 class CursorPositionResultModel(BaseModel):
