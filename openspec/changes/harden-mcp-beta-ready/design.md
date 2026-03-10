@@ -4,7 +4,7 @@
 
 现在的运行面仍有几个 beta 阻塞项：
 
-- `wisp-hand` CLI 只有直接启动入口，没有在连接前完成配置、依赖、写路径与 transport 预检的标准路径。
+- `wisp-hand-mcp` CLI 只有直接启动入口，没有在连接前完成配置、依赖、写路径与 transport 预检的标准路径。
 - `wisp_hand.capabilities`（原 `hand.capabilities`）只能返回基础依赖矩阵，缺少版本、运行实例、transport、保留策略与写路径状态等接入方真正需要的运行元数据。
 - audit、runtime log 与 capture artifact 会持续增长，但当前没有明确的 retention 与清理边界。
 - session 在进程重启后天然失效，但客户端缺少稳定的实例识别字段来判断“是拿错了 session，还是 runtime 已经重启”。
@@ -37,7 +37,7 @@
 
 本 change 会引入一个共享的 runtime discovery report 生成层，并暴露两个入口：
 
-- `wisp-hand doctor --json`：用于连接前预检，覆盖配置加载、transport 选择、依赖探测、关键路径可写性、启用能力与阻塞项。
+- `wisp-hand-mcp doctor --json`：用于连接前预检，覆盖配置加载、transport 选择、依赖探测、关键路径可写性、启用能力与阻塞项。
 - `wisp_hand.capabilities`：用于已连接客户端获取 live runtime 视角，在基础能力矩阵之上追加版本、`runtime_instance_id`、`started_at`、transport、保留策略摘要与其他运行元数据。
 
 这样可以让“是否可启动”和“当前这个已启动实例是谁”分别有稳定入口，同时避免 CLI 与 MCP tool 各自维护一套不同的探测逻辑。
@@ -77,11 +77,11 @@
 
 ### 5. beta 交付继续走 Python-first 路径，并把 transport 矩阵纳入 smoke gate
 
-本 change 仍然以 Python 包与 `wisp-hand` console script 为标准交付形式，文档同时覆盖 `uv run` / `uvx` / `python -m wisp_hand` 的推荐启动方式。网络 transport 仍只覆盖当前 runtime 已支持的模式，不新增独立 sidecar。
+本 change 仍然以 Python 包与 `wisp-hand-mcp` console script 为标准交付形式，文档同时覆盖 `uv run` / `uvx` / `python -m wisp_hand` 的推荐启动方式。网络 transport 仍只覆盖当前 runtime 已支持的模式，不新增独立 sidecar。
 
 beta smoke gate 至少包含：
 
-- `wisp-hand doctor --json`
+- `wisp-hand-mcp doctor --json`
 - `stdio` 启动与最小 MCP 调用
 - 一个网络 transport 的启动与最小 MCP 调用
 
@@ -126,7 +126,7 @@ beta smoke gate 至少包含：
 2. 更新默认配置模板与 README，统一外部接入方的安装/启动路径。
 3. 将 MCP tool 前缀从 `hand.*` 全量升级为 `wisp_hand.*`，并同步更新 tests、示例脚本与文档（不保留旧前缀）。
 4. 启用 tasks 支持并补齐 “tools/call as task” 的集成与测试，确保长耗时调用具备轮询/取消路径。
-5. 为外部客户端文档明确新的 discovery 契约：连接前用 `wisp-hand doctor --json`，连接后用 `wisp_hand.capabilities` 读取 live runtime 元数据。
+5. 为外部客户端文档明确新的 discovery 契约：连接前用 `wisp-hand-mcp doctor --json`，连接后用 `wisp_hand.capabilities` 读取 live runtime 元数据。
 6. 以 `uv run pytest`、OpenSpec validate 与 transport smoke test 作为发布前校验。
 
 如果实现过程中发现 hardening 变更影响启动稳定性，回滚策略就是回退到上一个发布版本；本 change 不引入不可逆的数据迁移。

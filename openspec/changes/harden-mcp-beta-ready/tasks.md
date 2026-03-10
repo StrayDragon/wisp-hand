@@ -1,3 +1,8 @@
+## 0. 分发与 CLI（`uvx wisp-hand-mcp`）
+
+- [ ] 0.1 将 Python distribution 名称调整为 `wisp-hand-mcp`，并提供 `wisp-hand-mcp` console script（不保留 `wisp-hand` 旧命令）
+- [ ] 0.2 更新 CLI `prog`/帮助文本与文档示例，使 `uvx wisp-hand-mcp` 成为默认分发与使用方式；保留 `python -m wisp_hand` 作为调试入口
+
 ## 1. Tool 命名空间收敛（`hand.*` -> `wisp_hand.*`）
 
 - [ ] 1.1 将所有 MCP tools 从 `hand.*` 全量重命名为 `wisp_hand.*`（server 注册名、implemented_tools、文档与示例全部同步）
@@ -8,7 +13,7 @@
 ## 2. Runtime Discovery 与 Preflight
 
 - [ ] 2.1 提炼共享的 runtime discovery report，统一输出版本、config、transport、依赖、写路径、能力摘要与阻塞问题
-- [ ] 2.2 扩展 `wisp-hand` CLI，新增 `doctor --json` 入口并让启动前预检复用同一套 discovery 检查
+- [ ] 2.2 扩展 `wisp-hand-mcp` CLI，新增 `doctor --json` 入口并让启动前预检复用同一套 discovery 检查
 - [ ] 2.3 扩展 `wisp_hand.capabilities` 返回 live runtime 元数据，包括 `version`、`runtime_instance_id`、`started_at`、transport 与 retention 摘要
 - [ ] 2.4 为 discovery 的 ready / blocked、stdio / 网络 transport 分别编写测试
 
@@ -30,7 +35,7 @@
 
 ## 5. 外部接入交付与验证
 
-- [ ] 5.1 更新 README 与示例配置，明确 Python-first 的安装、`uv run` / `uvx` / `python -m wisp_hand` 启动方式，以及 `doctor` / `wisp_hand.capabilities` 的推荐接入顺序
+- [ ] 5.1 更新 README 与示例配置，明确 Python-first 的安装、`uv run` / `uvx wisp-hand-mcp` / `python -m wisp_hand` 启动方式，以及 `doctor` / `wisp_hand.capabilities` 的推荐接入顺序
 - [ ] 5.2 补齐任务模式接入指南：如何以 task 方式调用工具、如何轮询与取消、以及推荐的超时与 pollInterval 策略
 - [ ] 5.3 补齐 stdio 与一个网络 transport 的 smoke test / 集成脚本，覆盖最小 MCP 握手、discovery 调用与 task-augmented 调用
 - [ ] 5.4 编写 troubleshooting 文档，覆盖配置非法、依赖缺失、写路径不可用、runtime 重启、retention 清理与 task 轮询的常见排障路径
