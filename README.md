@@ -1,6 +1,8 @@
-## Wisp Hand MCP
+# Wisp Hand
 
-一个面向 Hyprland/Wayland 的 computer-use MCP server 基座。它不是 agent，不做规划与决策，只提供可被外部 AI/客户端调用的 MCP 能力（观察、截图、输入、批处理、可选本地视觉、以及 task-augmented 的长耗时执行）。
+一个面向 Hyprland/Wayland 的 computer-use MCP server 基座。它不是 agent，不做规划与决策，只提供可被外部 AI/客户端调用的库和 MCP 能力（观察、截图、输入、批处理、可选本地视觉、以及 task-augmented 的长耗时执行）。
+
+## MCP
 
 适用场景：
 
