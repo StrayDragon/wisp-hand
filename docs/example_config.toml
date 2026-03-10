@@ -1,0 +1,47 @@
+[server]
+transport = "stdio"          # stdio | sse | streamable-http
+host = "127.0.0.1"
+port = 8000
+
+[paths]
+state_dir = "~/.local/state/wisp-hand"
+audit_file = "~/.local/state/wisp-hand/audit.jsonl"
+runtime_log_file = "~/.local/state/wisp-hand/runtime.jsonl"
+# capture_dir 如不显式指定，默认在 state_dir/captures
+
+[logging]
+level = "INFO"
+allow_sensitive = false
+
+[logging.console]
+enabled = true
+format = "rich"              # rich | plain | json
+
+[logging.file]
+enabled = true
+format = "json"              # json | plain | rich(会自动降级)
+
+[retention.captures]
+max_age_seconds = 604800      # 7d
+max_total_bytes = 268435456   # 256MB
+
+[retention.audit]
+max_bytes = 10485760
+backup_count = 5
+
+[retention.runtime_log]
+max_bytes = 10485760
+backup_count = 5
+
+[vision]
+mode = "disabled"            # disabled | assist
+base_url = "http://127.0.0.1:11434"
+model = "qwen3.5:0.8b"
+timeout_seconds = 30
+
+[coordinates]
+mode = "auto"                # auto | hyprctl-infer | grim-probe | active-pointer-probe
+cache_enabled = true
+probe_region_size = 120
+min_confidence = 0.75
+
