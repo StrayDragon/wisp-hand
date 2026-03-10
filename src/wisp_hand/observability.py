@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from structlog.contextvars import clear_contextvars
 from structlog.stdlib import ProcessorFormatter
+from logging.handlers import RotatingFileHandler
 
 from wisp_hand.config import LogFormat, LogLevel, RuntimeConfig
 
@@ -164,7 +165,21 @@ def _make_handlers(config: RuntimeConfig) -> list[logging.Handler]:
         try:
             file_path = Path(config.paths.runtime_log_file)
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_handler = logging.FileHandler(file_path, encoding="utf-8")
+            retention = config.retention.runtime_log
+            if retention.max_bytes > 0:
+                file_handler = RotatingFileHandler(
+                    file_path,
+                    maxBytes=retention.max_bytes,
+                    backupCount=retention.backup_count,
+                    encoding="utf-8",
+                )
+                try:
+                    if file_path.exists() and file_path.stat().st_size >= retention.max_bytes:
+                        file_handler.doRollover()
+                except Exception:  # pragma: no cover - best-effort
+                    pass
+            else:  # pragma: no cover - schema prevents max_bytes<=0, but keep safe
+                file_handler = logging.FileHandler(file_path, encoding="utf-8")
         except Exception:  # pragma: no cover - degrade on filesystem failures
             file_handler = None
         if file_handler is not None:
