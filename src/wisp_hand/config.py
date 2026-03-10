@@ -126,6 +126,31 @@ class DependencyConfig(BaseModel):
     optional_binaries: list[str] = Field(default_factory=lambda: ["wtype"])
 
 
+class CaptureRetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # If set, captures older than max_age_seconds are deleted.
+    max_age_seconds: int | None = Field(default=7 * 24 * 60 * 60, gt=0)
+
+    # If set, keeps deleting the oldest captures until total bytes <= max_total_bytes.
+    max_total_bytes: int | None = Field(default=256 * 1024 * 1024, gt=0)
+
+
+class LogRetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    backup_count: int = Field(default=5, ge=0)
+
+
+class RetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    captures: CaptureRetentionConfig = Field(default_factory=CaptureRetentionConfig)
+    audit: LogRetentionConfig = Field(default_factory=LogRetentionConfig)
+    runtime_log: LogRetentionConfig = Field(default_factory=LogRetentionConfig)
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -137,6 +162,7 @@ class RuntimeConfig(BaseModel):
     vision: VisionConfig = Field(default_factory=VisionConfig)
     coordinates: CoordinatesConfig = Field(default_factory=CoordinatesConfig)
     dependencies: DependencyConfig = Field(default_factory=DependencyConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
     config_path: Path = DEFAULT_CONFIG_PATH
 
 

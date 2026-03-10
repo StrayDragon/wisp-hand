@@ -38,6 +38,17 @@ class ScopeEnvelope(TypedDict):
 
 
 class CapabilityResult(TypedDict):
+    status: str
+    version: str
+    runtime_instance_id: str | None
+    started_at: str | None
+    transport: str
+    host: str | None
+    port: int | None
+    paths: dict[str, str | None]
+    paths_writable: dict[str, bool]
+    retention: dict[str, JSONValue]
+    issues: list[dict[str, JSONValue]]
     hyprland_detected: bool
     capture_available: bool
     input_available: bool
@@ -45,11 +56,14 @@ class CapabilityResult(TypedDict):
     required_binaries: list[str]
     missing_binaries: list[str]
     optional_binaries: list[str]
+    missing_optional: list[str]
     implemented_tools: list[str]
     config_path: str
 
 
 class SessionOpenResult(TypedDict):
+    runtime_instance_id: str
+    started_at: str
     session_id: str
     scope: ScopeEnvelope
     armed: bool
@@ -151,6 +165,8 @@ class AuditRecord(TypedDict):
     tool_name: str
     status: Literal["ok", "error", "denied"]
     latency_ms: int
+    runtime_instance_id: NotRequired[str]
+    started_at: NotRequired[str]
     session_id: NotRequired[str | None]
     scope: NotRequired[ScopeEnvelope | None]
     result: NotRequired[JSONValue | None]
@@ -197,6 +213,17 @@ class ScopeEnvelopeModel(BaseModel):
 class CapabilityResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    status: str
+    version: str
+    runtime_instance_id: str | None = None
+    started_at: str | None = None
+    transport: str
+    host: str | None = None
+    port: int | None = None
+    paths: dict[str, str | None]
+    paths_writable: dict[str, bool]
+    retention: dict[str, Any]
+    issues: list[dict[str, Any]]
     hyprland_detected: bool
     capture_available: bool
     input_available: bool
@@ -204,6 +231,7 @@ class CapabilityResultModel(BaseModel):
     required_binaries: list[str]
     missing_binaries: list[str]
     optional_binaries: list[str]
+    missing_optional: list[str]
     implemented_tools: list[str]
     config_path: str
 
@@ -211,6 +239,8 @@ class CapabilityResultModel(BaseModel):
 class SessionOpenResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    runtime_instance_id: str
+    started_at: str
     session_id: str
     scope: ScopeEnvelopeModel
     armed: bool
@@ -361,6 +391,8 @@ class CaptureResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capture_id: str
+    runtime_instance_id: str | None = None
+    started_at: str | None = None
     scope: ScopeEnvelopeModel
     target: str
     width: int

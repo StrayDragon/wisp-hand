@@ -18,6 +18,7 @@ from wisp_hand.command import CommandRunner
 from wisp_hand.config import RuntimeConfig, load_runtime_config
 from wisp_hand.coordinates.service import CoordinateService
 from wisp_hand.coordinates.models import CoordinateMap
+from wisp_hand.discovery import build_discovery_report
 from wisp_hand.errors import WispHandError, internal_error
 from wisp_hand.hyprland import HyprlandAdapter
 from wisp_hand.input_backend import InputBackend, WaylandInputBackend
@@ -51,28 +52,9 @@ from wisp_hand.vision import (
     scale_candidates,
 )
 from wisp_hand.observability import get_logger, init_logging
+from wisp_hand.tooling import IMPLEMENTED_TOOLS
 
 _AUDIT_CONTEXT: ContextVar[dict[str, JSONValue] | None] = ContextVar("_AUDIT_CONTEXT", default=None)
-
-IMPLEMENTED_TOOLS = [
-    "wisp_hand.capabilities",
-    "wisp_hand.session.open",
-    "wisp_hand.session.close",
-    "wisp_hand.desktop.get_topology",
-    "wisp_hand.cursor.get_position",
-    "wisp_hand.capture.screen",
-    "wisp_hand.wait",
-    "wisp_hand.capture.diff",
-    "wisp_hand.batch.run",
-    "wisp_hand.vision.describe",
-    "wisp_hand.vision.locate",
-    "wisp_hand.pointer.move",
-    "wisp_hand.pointer.click",
-    "wisp_hand.pointer.drag",
-    "wisp_hand.pointer.scroll",
-    "wisp_hand.keyboard.type",
-    "wisp_hand.keyboard.press",
-]
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +89,10 @@ class WispHandRuntime:
         except Exception:  # pragma: no cover - logging must never break runtime
             pass
         self._logger = get_logger("runtime")
+        self.runtime_instance_id = str(uuid4())
         self._coordinates_last_fingerprint: str | None = None
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
+        self.started_at = self._now_provider().isoformat()
         self._sleep_provider = sleep_provider or sleep
         self._command_runner = command_runner or CommandRunner()
         self._session_store = session_store or SessionStore(
@@ -120,6 +104,13 @@ class WispHandRuntime:
             required_binaries=config.dependencies.required_binaries,
             optional_binaries=config.dependencies.optional_binaries,
         )
+        self._startup_discovery = build_discovery_report(
+            config=self.config,
+            dependency_probe=self._dependency_probe,
+            runtime_instance_id=self.runtime_instance_id,
+            started_at=self.started_at,
+            include_path_checks=True,
+        )
         self._hyprland = hyprland_adapter or HyprlandAdapter(runner=self._command_runner)
         self._coordinates = CoordinateService(
             config=self.config.coordinates,
@@ -127,6 +118,16 @@ class WispHandRuntime:
             runner=self._command_runner,
         )
         self._capture_store = CaptureArtifactStore(base_dir=config.paths.capture_dir)
+        try:
+            summary = self._capture_store.enforce_retention(
+                max_age_seconds=config.retention.captures.max_age_seconds,
+                max_total_bytes=config.retention.captures.max_total_bytes,
+                now=self._now_provider(),
+            )
+            if summary.get("removed_count"):
+                self._safe_log("capture.retention", **summary)
+        except Exception:  # pragma: no cover - retention must never break runtime
+            pass
         self._capture_engine = capture_engine or CaptureEngine(
             artifact_store=self._capture_store,
             runner=self._command_runner,
@@ -157,11 +158,14 @@ class WispHandRuntime:
         self._audit_logger = audit_logger or AuditLogger(
             audit_file=config.paths.audit_file,
             allow_sensitive=config.logging.allow_sensitive,
+            max_bytes=config.retention.audit.max_bytes,
+            backup_count=config.retention.audit.backup_count,
         )
         self._safe_log(
             "runtime.init",
             transport=self.config.server.transport,
             config_path=str(self.config.config_path),
+            runtime_instance_id=self.runtime_instance_id,
         )
 
     @classmethod
@@ -170,25 +174,17 @@ class WispHandRuntime:
         return cls(config=load_runtime_config(path))
 
     def capabilities(self) -> CapabilityResult:
-        result = self._run_tool(
-            "wisp_hand.capabilities",
-            action=lambda: self._dependency_probe.report(
-                config_path=str(self.config.config_path),
-                implemented_tools=IMPLEMENTED_TOOLS,
-            ),
-        )
-        result["vision_available"] = (
-            self.config.vision.mode == "assist"
-            and bool(self.config.vision.model)
-            and bool(self.config.vision.base_url)
-        )
+        result = self._run_tool("wisp_hand.capabilities", action=lambda: dict(self._startup_discovery))
         self._safe_log(
             "dependencies.probe",
+            status=result.get("status"),
+            runtime_instance_id=self.runtime_instance_id,
             hyprland_detected=result["hyprland_detected"],
             capture_available=result["capture_available"],
             input_available=result["input_available"],
             vision_available=result["vision_available"],
             missing_binaries=result["missing_binaries"],
+            missing_optional=result.get("missing_optional"),
         )
         return result
 
@@ -211,6 +207,8 @@ class WispHandRuntime:
                 ttl_seconds=ttl_seconds,
             )
             return {
+                "runtime_instance_id": self.runtime_instance_id,
+                "started_at": self.started_at,
                 "session_id": record.session_id,
                 "scope": record.scope,
                 "armed": record.armed,
@@ -313,6 +311,8 @@ class WispHandRuntime:
                 inline=inline,
                 with_cursor=with_cursor,
                 downscale=downscale,
+                runtime_instance_id=self.runtime_instance_id,
+                started_at=self.started_at,
             )
 
         result = self._run_tool(
@@ -332,6 +332,19 @@ class WispHandRuntime:
                 with_cursor=with_cursor,
                 path=result.get("path"),
             )
+            capture_id = result.get("capture_id")
+            if isinstance(capture_id, str):
+                try:
+                    summary = self._capture_store.enforce_retention(
+                        max_age_seconds=self.config.retention.captures.max_age_seconds,
+                        max_total_bytes=self.config.retention.captures.max_total_bytes,
+                        now=self._now_provider(),
+                        exclude_capture_ids={capture_id},
+                    )
+                    if summary.get("removed_count"):
+                        self._safe_log("capture.retention", **summary)
+                except Exception:  # pragma: no cover - retention must never break tools
+                    pass
         return result
 
     def wait(self, *, session_id: str, duration_ms: int) -> WaitResult:
@@ -1045,6 +1058,8 @@ class WispHandRuntime:
         try:
             result = action()
         except WispHandError as exc:
+            exc.details.setdefault("runtime_instance_id", self.runtime_instance_id)
+            exc.details.setdefault("started_at", self.started_at)
             status = self._audit_status_for_error(exc.code)
             latency_ms = self._elapsed_ms(started)
             error = exc.to_payload()
@@ -1069,6 +1084,8 @@ class WispHandRuntime:
             raise
         except Exception as exc:  # pragma: no cover - defensive wrapper
             error = internal_error(str(exc))
+            error.details.setdefault("runtime_instance_id", self.runtime_instance_id)
+            error.details.setdefault("started_at", self.started_at)
             latency_ms = self._elapsed_ms(started)
             payload = error.to_payload()
             self._audit_logger.record(
@@ -1340,6 +1357,8 @@ class WispHandRuntime:
             "tool_name": tool_name,
             "status": status,  # type: ignore[typeddict-item]
             "latency_ms": latency_ms,
+            "runtime_instance_id": self.runtime_instance_id,  # type: ignore[typeddict-item]
+            "started_at": self.started_at,  # type: ignore[typeddict-item]
         }
         audit_context = _AUDIT_CONTEXT.get()
         if audit_context is not None:

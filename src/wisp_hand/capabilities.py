@@ -49,6 +49,7 @@ class DependencyProbe:
             "required_binaries": list(self._required_binaries),
             "missing_binaries": missing_binaries,
             "optional_binaries": list(self._optional_binaries),
+            "missing_optional": missing_optional,
             "implemented_tools": list(implemented_tools),
             "config_path": config_path,
         }
