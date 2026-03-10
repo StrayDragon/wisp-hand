@@ -16,8 +16,10 @@ from wisp_hand.capabilities import DependencyProbe
 from wisp_hand.capture import CaptureArtifactStore, CaptureDiffEngine, CaptureEngine, CaptureTarget
 from wisp_hand.command import CommandRunner
 from wisp_hand.config import RuntimeConfig, load_runtime_config
+from wisp_hand.coordinates.service import CoordinateService
+from wisp_hand.coordinates.models import CoordinateMap
 from wisp_hand.errors import WispHandError, internal_error
-from wisp_hand.hyprland import HyprlandAdapter, desktop_bounds
+from wisp_hand.hyprland import HyprlandAdapter
 from wisp_hand.input_backend import InputBackend, WaylandInputBackend
 from wisp_hand.models import (
     AuditRecord,
@@ -105,6 +107,7 @@ class WispHandRuntime:
         except Exception:  # pragma: no cover - logging must never break runtime
             pass
         self._logger = get_logger("runtime")
+        self._coordinates_last_fingerprint: str | None = None
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
         self._sleep_provider = sleep_provider or sleep
         self._command_runner = command_runner or CommandRunner()
@@ -118,6 +121,11 @@ class WispHandRuntime:
             optional_binaries=config.dependencies.optional_binaries,
         )
         self._hyprland = hyprland_adapter or HyprlandAdapter(runner=self._command_runner)
+        self._coordinates = CoordinateService(
+            config=self.config.coordinates,
+            state_dir=self.config.paths.state_dir,
+            runner=self._command_runner,
+        )
         self._capture_store = CaptureArtifactStore(base_dir=config.paths.capture_dir)
         self._capture_engine = capture_engine or CaptureEngine(
             artifact_store=self._capture_store,
@@ -247,17 +255,25 @@ class WispHandRuntime:
         return result
 
     def get_topology(self) -> JSONValue:
-        return self._run_tool(
-            "hand.desktop.get_topology",
-            action=self._hyprland.get_topology,
-        )
+        def action() -> JSONValue:
+            topology = self._hyprland.get_topology()
+            coordinate_map = self._resolve_coordinate_map(topology)
+            return self._augment_topology(topology=topology, coordinate_map=coordinate_map)
+
+        return self._run_tool("hand.desktop.get_topology", action=action)
 
     def get_cursor_position(self, *, session_id: str) -> JSONValue:
         def action() -> JSONValue:
             session = self._session_store.get_session(session_id)
             topology = self._hyprland.get_topology()
+            coordinate_map = self._resolve_coordinate_map(topology)
             cursor = self._hyprland.get_cursor_position()
-            relative = self._hyprland.relative_position(cursor=cursor, scope=session.scope, topology=topology)
+            relative = self._hyprland.relative_position(
+                cursor=cursor,
+                scope=session.scope,
+                topology=topology,
+                coordinate_map=coordinate_map,
+            )
             return {
                 "x": cursor["x"],
                 "y": cursor["y"],
@@ -283,11 +299,17 @@ class WispHandRuntime:
         def action() -> JSONValue:
             session = self._session_store.get_session(session_id)
             topology = self._hyprland.get_topology()
+            coordinate_map = self._resolve_coordinate_map(topology)
             return self._capture_engine.capture(
                 target=target,
                 scope=session.scope,
                 topology=topology,
-                bounds_resolver=self._hyprland.scope_bounds,
+                coordinate_map=coordinate_map,
+                bounds_resolver=lambda scope, topology: self._hyprland.scope_bounds(
+                    scope,
+                    topology,
+                    coordinate_map=coordinate_map,
+                ),
                 inline=inline,
                 with_cursor=with_cursor,
                 downscale=downscale,
@@ -462,6 +484,50 @@ class WispHandRuntime:
 
         def action() -> VisionLocateResult:
             payload = provider.locate(image=image, target=target)
+            metadata = self._capture_store.load_metadata(capture_id)
+            source_bounds = metadata.get("source_bounds") if isinstance(metadata, dict) else None
+            pixel_ratio_x = metadata.get("pixel_ratio_x") if isinstance(metadata, dict) else None
+            pixel_ratio_y = metadata.get("pixel_ratio_y") if isinstance(metadata, dict) else None
+
+            candidates_image = scale_candidates(
+                candidates=payload["candidates"],
+                from_width=image.processed_width,
+                from_height=image.processed_height,
+                to_width=image.width,
+                to_height=image.height,
+            )
+            candidates_scope: list[dict[str, object]] = []
+            if (
+                isinstance(source_bounds, dict)
+                and isinstance(source_bounds.get("width"), int)
+                and isinstance(source_bounds.get("height"), int)
+                and isinstance(pixel_ratio_x, (int, float))
+                and isinstance(pixel_ratio_y, (int, float))
+                and pixel_ratio_x > 0
+                and pixel_ratio_y > 0
+            ):
+                scope_width = int(source_bounds["width"])
+                scope_height = int(source_bounds["height"])
+                for candidate in candidates_image:
+                    sx = int(round(candidate["x"] / float(pixel_ratio_x)))
+                    sy = int(round(candidate["y"] / float(pixel_ratio_y)))
+                    sw = max(1, int(round(candidate["width"] / float(pixel_ratio_x))))
+                    sh = max(1, int(round(candidate["height"] / float(pixel_ratio_y))))
+                    sx = max(0, min(sx, scope_width - 1))
+                    sy = max(0, min(sy, scope_height - 1))
+                    sw = max(1, min(sw, scope_width - sx))
+                    sh = max(1, min(sh, scope_height - sy))
+                    candidates_scope.append(
+                        {
+                            "x": sx,
+                            "y": sy,
+                            "width": sw,
+                            "height": sh,
+                            "confidence": candidate["confidence"],
+                            "reason": candidate["reason"],
+                        }
+                    )
+
             return {
                 "provider": payload["provider"],
                 "model": payload["model"],
@@ -472,13 +538,8 @@ class WispHandRuntime:
                 "processed_width": image.processed_width,
                 "processed_height": image.processed_height,
                 "target": target,
-                "candidates": scale_candidates(
-                    candidates=payload["candidates"],
-                    from_width=image.processed_width,
-                    from_height=image.processed_height,
-                    to_width=image.width,
-                    to_height=image.height,
-                ),
+                "candidates_scope": candidates_scope,  # type: ignore[typeddict-item]
+                "candidates_image": candidates_image,  # type: ignore[typeddict-item]
                 "latency_ms": payload["latency_ms"],
             }
 
@@ -490,7 +551,8 @@ class WispHandRuntime:
                 input_source=result["input_source"],
                 capture_id=result["capture_id"],
                 target=result["target"],
-                candidates=len(result["candidates"]),
+                candidates_scope=len(result["candidates_scope"]),
+                candidates_image=len(result["candidates_image"]),
             )
             return result
 
@@ -1113,7 +1175,8 @@ class WispHandRuntime:
         extra: dict[str, JSONValue] | None = None,
     ) -> dict[str, JSONValue]:
         topology = self._hyprland.get_topology()
-        bounds = self._hyprland.scope_bounds(session.scope, topology)
+        coordinate_map = self._resolve_coordinate_map(topology)
+        bounds = self._hyprland.scope_bounds(session.scope, topology, coordinate_map=coordinate_map)
         absolute = self._resolve_scope_point(
             bounds=bounds,
             scope_x=scope_x,
@@ -1132,7 +1195,7 @@ class WispHandRuntime:
             "scope": session.scope,
             "action": action,
             "absolute_position": absolute,
-            "desktop_bounds": desktop_bounds(topology),
+            "desktop_bounds": coordinate_map.desktop_layout_bounds.model_dump(),
         }
 
     def _prepare_pointer_drag(
@@ -1146,7 +1209,8 @@ class WispHandRuntime:
         button: PointerButton,
     ) -> dict[str, JSONValue]:
         topology = self._hyprland.get_topology()
-        bounds = self._hyprland.scope_bounds(session.scope, topology)
+        coordinate_map = self._resolve_coordinate_map(topology)
+        bounds = self._hyprland.scope_bounds(session.scope, topology, coordinate_map=coordinate_map)
         absolute_start = self._resolve_scope_point(
             bounds=bounds,
             scope_x=start_x,
@@ -1172,8 +1236,57 @@ class WispHandRuntime:
             },
             "absolute_start": absolute_start,
             "absolute_end": absolute_end,
-            "desktop_bounds": desktop_bounds(topology),
+            "desktop_bounds": coordinate_map.desktop_layout_bounds.model_dump(),
         }
+
+    def _resolve_coordinate_map(self, topology: dict[str, object]) -> CoordinateMap:
+        coordinate_map = self._coordinates.resolve(topology)  # type: ignore[arg-type]
+        if coordinate_map.topology_fingerprint != self._coordinates_last_fingerprint:
+            self._coordinates_last_fingerprint = coordinate_map.topology_fingerprint
+            self._safe_log(
+                "coordinates.resolved",
+                backend=coordinate_map.backend,
+                confidence=coordinate_map.confidence,
+                cached=coordinate_map.cached,
+                topology_fingerprint=coordinate_map.topology_fingerprint,
+            )
+        return coordinate_map
+
+    @staticmethod
+    def _augment_topology(*, topology: dict[str, object], coordinate_map: CoordinateMap) -> dict[str, object]:
+        monitors = topology.get("monitors")
+        mapped_by_name = {monitor.name: monitor for monitor in coordinate_map.monitors}
+        if isinstance(monitors, list):
+            enriched: list[object] = []
+            for monitor in monitors:
+                if isinstance(monitor, dict):
+                    name = monitor.get("name")
+                    mapped = mapped_by_name.get(name) if isinstance(name, str) else None
+                    if mapped is not None:
+                        enriched.append(
+                            {
+                                **monitor,
+                                "layout_bounds": mapped.layout_bounds.model_dump(),
+                                "physical_size": mapped.physical_size.model_dump(),
+                                "scale": mapped.scale,
+                                "pixel_ratio": mapped.pixel_ratio.model_dump(),
+                            }
+                        )
+                        continue
+                enriched.append(monitor)
+            topology = {**topology, "monitors": enriched}
+
+        topology = {
+            **topology,
+            "coordinate_backend": {
+                "backend": coordinate_map.backend,
+                "confidence": coordinate_map.confidence,
+                "topology_fingerprint": coordinate_map.topology_fingerprint,
+                "cached": coordinate_map.cached,
+            },
+            "desktop_layout_bounds": coordinate_map.desktop_layout_bounds.model_dump(),
+        }
+        return topology
 
     @staticmethod
     def _resolve_scope_point(

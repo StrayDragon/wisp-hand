@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from wisp_hand.command import CommandResult, CommandRunner
+from wisp_hand.coordinates.backends import resolve_hyprctl_infer
+from wisp_hand.coordinates.models import CoordinateMap
 from wisp_hand.errors import WispHandError
 from wisp_hand.models import JSONValue, ScopeEnvelope
 
@@ -44,13 +46,31 @@ class HyprlandAdapter:
             {"payload": payload},
         )
 
-    def scope_bounds(self, scope: ScopeEnvelope, topology: dict[str, Any]) -> dict[str, int]:
+    def scope_bounds(
+        self,
+        scope: ScopeEnvelope,
+        topology: dict[str, Any],
+        *,
+        coordinate_map: CoordinateMap | None = None,
+    ) -> dict[str, int]:
         scope_type = scope["type"]
         target = scope["target"]
 
         if scope_type == "desktop":
+            if coordinate_map is not None:
+                return coordinate_map.desktop_layout_bounds.model_dump()
             return desktop_bounds(topology)
         if scope_type == "monitor":
+            if coordinate_map is not None:
+                selector = selector_value(target)
+                for monitor in topology.get("monitors", []):
+                    if matches_selector(monitor, selector):
+                        name = monitor.get("name")
+                        if isinstance(name, str):
+                            for mapped in coordinate_map.monitors:
+                                if mapped.name == name:
+                                    return mapped.layout_bounds.model_dump()
+                        break
             return monitor_bounds(topology, target)
         if scope_type == "window":
             return window_bounds(topology, target)
@@ -75,8 +95,9 @@ class HyprlandAdapter:
         cursor: dict[str, int],
         scope: ScopeEnvelope,
         topology: dict[str, Any],
+        coordinate_map: CoordinateMap | None = None,
     ) -> dict[str, int]:
-        bounds = self.scope_bounds(scope, topology)
+        bounds = self.scope_bounds(scope, topology, coordinate_map=coordinate_map)
         return {
             "scope_x": cursor["x"] - bounds["x"],
             "scope_y": cursor["y"] - bounds["y"],
@@ -125,28 +146,22 @@ class HyprlandAdapter:
 
 
 def desktop_bounds(topology: dict[str, Any]) -> dict[str, int]:
-    monitors = topology.get("monitors")
-    if not isinstance(monitors, list) or not monitors:
-        raise WispHandError("capability_unavailable", "No monitor topology is available")
-
-    boxes = [normalize_bounds(monitor) for monitor in monitors]
-    min_x = min(box["x"] for box in boxes)
-    min_y = min(box["y"] for box in boxes)
-    max_x = max(box["x"] + box["width"] for box in boxes)
-    max_y = max(box["y"] + box["height"] for box in boxes)
-    return {
-        "x": min_x,
-        "y": min_y,
-        "width": max_x - min_x,
-        "height": max_y - min_y,
-    }
+    coordinate_map = resolve_hyprctl_infer(topology)
+    return coordinate_map.desktop_layout_bounds.model_dump()
 
 
 def monitor_bounds(topology: dict[str, Any], target: JSONValue) -> dict[str, int]:
     selector = selector_value(target)
     for monitor in topology.get("monitors", []):
         if matches_selector(monitor, selector):
-            return normalize_bounds(monitor)
+            name = monitor.get("name")
+            if not isinstance(name, str) or not name:
+                break
+            coordinate_map = resolve_hyprctl_infer(topology)
+            for monitor_map in coordinate_map.monitors:
+                if monitor_map.name == name:
+                    return monitor_map.layout_bounds.model_dump()
+            break
     raise WispHandError("capability_unavailable", "Monitor selector did not match any known monitor", {"selector": selector})
 
 

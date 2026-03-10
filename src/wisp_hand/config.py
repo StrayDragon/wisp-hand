@@ -92,6 +92,33 @@ class VisionConfig(BaseModel):
     max_concurrency: int = Field(default=1, gt=0)
 
 
+CoordinateMode = Literal["auto", "hyprctl-infer", "grim-probe", "active-pointer-probe"]
+
+
+class CoordinatesProbeRegionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: int
+    y: int
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+
+class CoordinatesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: CoordinateMode = "auto"
+    cache_enabled: bool = True
+    probe_region_size: int = Field(default=120, gt=0)
+    min_confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+
+    # Diagnostic-only. Active probing moves the pointer and requires explicit opt-in.
+    active_probe_enabled: bool = False
+    active_probe_region: CoordinatesProbeRegionConfig | None = None
+    active_probe_tolerance_px: int = Field(default=2, ge=0)
+    active_probe_move_delay_ms: int = Field(default=50, ge=0)
+
+
 class DependencyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -108,6 +135,7 @@ class RuntimeConfig(BaseModel):
     session: SessionConfig = Field(default_factory=SessionConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     vision: VisionConfig = Field(default_factory=VisionConfig)
+    coordinates: CoordinatesConfig = Field(default_factory=CoordinatesConfig)
     dependencies: DependencyConfig = Field(default_factory=DependencyConfig)
     config_path: Path = DEFAULT_CONFIG_PATH
 

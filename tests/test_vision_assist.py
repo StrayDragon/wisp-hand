@@ -104,6 +104,11 @@ def write_capture(capture_dir: Path, *, capture_id: str, width: int, height: int
             "path": str(image_path),
             "created_at": "2026-03-09T00:00:00+00:00",
             "source_bounds": {"x": 0, "y": 0, "width": width, "height": height},
+            "source_coordinate_space": "layout_px",
+            "image_coordinate_space": "image_px",
+            "pixel_ratio_x": 1.0,
+            "pixel_ratio_y": 1.0,
+            "mapping": {"kind": "single", "monitors": []},
             "downscale": None,
         },
     )
@@ -182,7 +187,7 @@ def test_vision_locate_uses_capture_artifacts_and_records_audit_fields(tmp_path:
     locate = runtime.vision_locate(capture_id="cap-1", target="submit button")
     assert locate["capture_id"] == "cap-1"
     assert locate["target"] == "submit button"
-    assert locate["candidates"] == [
+    expected_candidates = [
         {
             "x": 10,
             "y": 20,
@@ -192,6 +197,8 @@ def test_vision_locate_uses_capture_artifacts_and_records_audit_fields(tmp_path:
             "reason": "matches the button label",
         }
     ]
+    assert locate["candidates_image"] == expected_candidates
+    assert locate["candidates_scope"] == expected_candidates
 
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()

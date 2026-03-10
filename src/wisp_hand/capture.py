@@ -11,8 +11,8 @@ from uuid import uuid4
 from PIL import Image, ImageChops
 
 from wisp_hand.command import CommandRunner
+from wisp_hand.coordinates.models import CoordinateMap
 from wisp_hand.errors import WispHandError
-from wisp_hand.hyprland import desktop_bounds
 from wisp_hand.models import ScopeEnvelope
 
 CaptureTarget = Literal["scope", "desktop", "monitor", "window", "region"]
@@ -77,6 +77,7 @@ class CaptureEngine:
         target: CaptureTarget,
         scope: ScopeEnvelope,
         topology: dict[str, Any],
+        coordinate_map: CoordinateMap,
         bounds_resolver: Callable[[ScopeEnvelope, dict[str, Any]], dict[str, int]],
         inline: bool,
         with_cursor: bool,
@@ -88,6 +89,7 @@ class CaptureEngine:
             target=target,
             scope=scope,
             topology=topology,
+            coordinate_map=coordinate_map,
             bounds_resolver=bounds_resolver,
         )
 
@@ -119,6 +121,16 @@ class CaptureEngine:
         inline_base64 = base64.b64encode(image_bytes).decode("ascii") if inline else None
         created_at = self._now_provider().isoformat()
 
+        mapping = self._build_mapping(source_bounds=source_bounds, coordinate_map=coordinate_map)
+        pixel_ratio_x: float | None
+        pixel_ratio_y: float | None
+        if mapping["kind"] == "single":
+            pixel_ratio_x = width / source_bounds["width"]
+            pixel_ratio_y = height / source_bounds["height"]
+        else:
+            pixel_ratio_x = None
+            pixel_ratio_y = None
+
         payload = {
             "capture_id": capture_id,
             "scope": scope,
@@ -130,6 +142,11 @@ class CaptureEngine:
             "inline_base64": inline_base64,
             "created_at": created_at,
             "source_bounds": source_bounds,
+            "source_coordinate_space": "layout_px",
+            "image_coordinate_space": "image_px",
+            "pixel_ratio_x": pixel_ratio_x,
+            "pixel_ratio_y": pixel_ratio_y,
+            "mapping": mapping,
             "downscale": downscale,
         }
         self._artifact_store.write_metadata(metadata_path=metadata_path, payload=payload)
@@ -147,10 +164,11 @@ class CaptureEngine:
         target: CaptureTarget,
         scope: ScopeEnvelope,
         topology: dict[str, Any],
+        coordinate_map: CoordinateMap,
         bounds_resolver: Callable[[ScopeEnvelope, dict[str, Any]], dict[str, int]],
     ) -> dict[str, int] | None:
         if target == "desktop":
-            return desktop_bounds(topology)
+            return coordinate_map.desktop_layout_bounds.model_dump()
         if target == "scope":
             return bounds_resolver(scope, topology)
         if target == "monitor" and scope["type"] == "monitor":
@@ -188,6 +206,45 @@ class CaptureEngine:
                 "scope_type": scope["type"],
             },
         )
+
+    @staticmethod
+    def _build_mapping(*, source_bounds: dict[str, int], coordinate_map: CoordinateMap) -> dict[str, Any]:
+        involved: list[dict[str, Any]] = []
+        ratios: list[tuple[float, float]] = []
+
+        sx = source_bounds["x"]
+        sy = source_bounds["y"]
+        sx2 = sx + source_bounds["width"]
+        sy2 = sy + source_bounds["height"]
+
+        for monitor in coordinate_map.monitors:
+            bounds = monitor.layout_bounds
+            mx1 = bounds.x
+            my1 = bounds.y
+            mx2 = mx1 + bounds.width
+            my2 = my1 + bounds.height
+            ix1 = max(sx, mx1)
+            iy1 = max(sy, my1)
+            ix2 = min(sx2, mx2)
+            iy2 = min(sy2, my2)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            involved.append(
+                {
+                    "name": monitor.name,
+                    "layout_bounds": bounds.model_dump(),
+                    "pixel_ratio": monitor.pixel_ratio.model_dump(),
+                }
+            )
+            ratios.append((monitor.pixel_ratio.x, monitor.pixel_ratio.y))
+
+        if not involved:
+            return {"kind": "unknown", "monitors": []}
+
+        first = ratios[0]
+        uniform = all(abs(rx - first[0]) <= 1e-3 and abs(ry - first[1]) <= 1e-3 for rx, ry in ratios[1:])
+        kind = "single" if uniform else "multi-monitor"
+        return {"kind": kind, "monitors": involved}
 
     @staticmethod
     def _geometry_string(bounds: dict[str, int]) -> str:
