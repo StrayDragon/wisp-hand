@@ -369,6 +369,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         write_out()
 
+        report["progress"] = {"phase": "topology", "step": None, "updated_at": time.time()}
+        write_out()
+        report["checks"]["topology"] = _call_and_capture_error(
+            runtime.get_topology,
+            timeout_seconds=args.step_timeout_seconds,
+            label="hand.desktop.get_topology",
+        )
+        write_out()
+
         scaled_region = args.scaled_region or _pick_region(
             monitors=monitors,
             prefer_scaled=True,
@@ -417,6 +426,15 @@ def main(argv: list[str] | None = None) -> int:
                         "source_bounds": source_bounds,
                         "captured_size": {"width": cap_w, "height": cap_h},
                         "ratio": {"width": ratio_w, "height": ratio_h},
+                        "pixel_ratio": {
+                            "x": captured.get("pixel_ratio_x"),
+                            "y": captured.get("pixel_ratio_y"),
+                        },
+                        "mapping_kind": (
+                            captured.get("mapping", {}).get("kind")
+                            if isinstance(captured.get("mapping"), dict)
+                            else None
+                        ),
                         "capture_id": captured.get("capture_id"),
                         "path": captured.get("path"),
                     }

@@ -305,6 +305,12 @@ v1 建议依赖：
 
 - 强制所有动作走 scope 坐标
 - 引入截图坐标与桌面坐标映射测试
+- mixed-scale 多显示器下默认启用坐标后端自动选择(`coordinates.mode="auto"`): scale != 1 或置信度不足时升级为 `grim-probe`，并在 capture 元数据中显式携带 `pixel_ratio_x/y` 与映射上下文
+- 建议将“可点击的 capture scope”限制在单一 monitor 内；跨 monitor 且比例不一致的 capture 会被标记为 `mapping.kind="multi-monitor"`，vision 坐标回映射无法保证可逆
+- 诊断与回退：
+  - 诊断脚本: `uv run python examples/attempts/diagnose_coordinates.py --capture-check`
+  - 可选主动校验: `slurp` 框选安全区域后运行 `--active-probe --confirm-active-probe --active-probe-region "$REGION"`
+  - 强制后端: `coordinates.mode="hyprctl-infer"`(快但保守), `coordinates.mode="grim-probe"`(更可靠但有探针开销)
 
 ### 风险 C：视觉延迟过高
 

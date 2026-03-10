@@ -135,7 +135,8 @@ class VisionLocateResult(TypedDict):
     processed_width: int
     processed_height: int
     target: str
-    candidates: list[VisionLocateCandidate]
+    candidates_scope: list[VisionLocateCandidate]
+    candidates_image: list[VisionLocateCandidate]
     latency_ms: int
 
 
@@ -321,7 +322,8 @@ class VisionLocateResultModel(BaseModel):
     processed_width: int
     processed_height: int
     target: str
-    candidates: list[VisionLocateCandidateModel]
+    candidates_scope: list[VisionLocateCandidateModel]
+    candidates_image: list[VisionLocateCandidateModel]
     latency_ms: int
 
 
@@ -337,6 +339,8 @@ class BoundsModel(BaseModel):
 class TopologyResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    coordinate_backend: dict[str, Any]
+    desktop_layout_bounds: BoundsModel
     monitors: list[dict[str, Any]]
     workspaces: list[dict[str, Any]]
     active_workspace: dict[str, Any]
@@ -366,4 +370,9 @@ class CaptureResultModel(BaseModel):
     inline_base64: str | None = None
     created_at: str
     source_bounds: BoundsModel | None = None
+    source_coordinate_space: str
+    image_coordinate_space: str
+    pixel_ratio_x: float | None = None
+    pixel_ratio_y: float | None = None
+    mapping: dict[str, Any]
     downscale: float | None = None
