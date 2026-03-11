@@ -39,3 +39,25 @@ docs-serve:
 # Build MkDocs site (fails on warnings).
 docs-build:
   NO_MKDOCS_2_WARNING=1 uv run mkdocs build --strict
+
+# Show the current project version from pyproject.toml.
+version:
+  @uv version --short
+
+# Examples:
+#   just bump-version              # patch bump
+#   just bump-version minor
+#   just bump-version 0.2.0
+# 
+# Bump the project version and keep pyproject.toml / uv.lock in sync.
+bump-version target="patch":
+  if [[ "{{target}}" =~ ^(major|minor|patch|stable|alpha|beta|rc|post|dev)$ ]]; then \
+    uv version --bump "{{target}}" --no-sync; \
+  elif [[ "{{target}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([ab]|rc|\.post|\.dev)?[0-9]*$ ]]; then \
+    uv version "{{target}}" --no-sync; \
+  else \
+    echo "invalid target: {{target}}" >&2; \
+    echo "use a bump kind (major|minor|patch|stable|alpha|beta|rc|post|dev) or an explicit version like 0.1.2" >&2; \
+    exit 1; \
+  fi
+  @uv version --short
