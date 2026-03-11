@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, NotRequired, TypeAlias, TypedDict
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 JSONPrimitive: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONPrimitive | list["JSONValue"] | dict[str, "JSONValue"]
@@ -18,6 +18,7 @@ ScopeType: TypeAlias = Literal[
 PointerButton: TypeAlias = Literal["left", "middle", "right"]
 DispatchState: TypeAlias = Literal["executed", "dry_run"]
 BatchStepStatus: TypeAlias = Literal["ok", "error", "skipped"]
+BatchReturnMode: TypeAlias = Literal["summary", "full"]
 
 
 class CoordinateSpace(TypedDict):
@@ -110,6 +111,7 @@ class BatchStepResult(TypedDict):
 
 class BatchRunResult(TypedDict):
     batch_id: str
+    return_mode: BatchReturnMode
     session_id: str
     scope: ScopeEnvelope
     stop_on_error: bool
@@ -149,8 +151,8 @@ class VisionLocateResult(TypedDict):
     processed_width: int
     processed_height: int
     target: str
-    candidates_scope: list[VisionLocateCandidate]
-    candidates_image: list[VisionLocateCandidate]
+    candidates_scope: NotRequired[list[VisionLocateCandidate]]
+    candidates_image: NotRequired[list[VisionLocateCandidate]]
     latency_ms: int
 
 
@@ -307,6 +309,7 @@ class BatchRunResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     batch_id: str
+    return_mode: BatchReturnMode
     session_id: str
     scope: ScopeEnvelopeModel
     stop_on_error: bool
@@ -352,8 +355,8 @@ class VisionLocateResultModel(BaseModel):
     processed_width: int
     processed_height: int
     target: str
-    candidates_scope: list[VisionLocateCandidateModel]
-    candidates_image: list[VisionLocateCandidateModel]
+    candidates_scope: list[VisionLocateCandidateModel] | None = None
+    candidates_image: list[VisionLocateCandidateModel] | None = None
     latency_ms: int
 
 
@@ -364,6 +367,65 @@ class BoundsModel(BaseModel):
     y: int
     width: int
     height: int
+
+
+class SizeModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    width: int
+    height: int
+
+
+class PixelRatioModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+
+
+class WorkspaceRefModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+
+
+class WindowSummaryModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    address: str
+    class_: str = Field(alias="class", serialization_alias="class")
+    title: str
+    workspace: WorkspaceRefModel
+    monitor: int
+    at: list[int]
+    size: list[int]
+
+
+class ActiveWindowResultModel(WindowSummaryModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class MonitorSummaryModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    layout_bounds: BoundsModel
+    physical_size: SizeModel
+    scale: float
+    pixel_ratio: PixelRatioModel
+
+
+class MonitorsResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    monitors: list[MonitorSummaryModel]
+
+
+class WindowsListResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    windows: list[WindowSummaryModel]
 
 
 class TopologyResultModel(BaseModel):
@@ -399,9 +461,10 @@ class CaptureResultModel(BaseModel):
     width: int
     height: int
     mime_type: str
-    path: str
     inline_base64: str | None = None
     created_at: str
+    image_uri: str
+    metadata_uri: str
     source_bounds: BoundsModel | None = None
     source_coordinate_space: str
     image_coordinate_space: str

@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from PIL import Image
+from mcp.server.fastmcp.exceptions import ResourceError
 
 from wisp_hand.capabilities import DependencyProbe
 from wisp_hand.capture import CaptureArtifactStore, CaptureEngine
@@ -29,6 +31,7 @@ TOPOLOGY_FIXTURE = {
         "address": "0xabc",
         "class": "Alacritty",
         "title": "shell",
+        "monitor": 0,
         "at": [50, 60],
         "size": [900, 700],
         "workspace": {"id": 1, "name": "1"},
@@ -38,6 +41,7 @@ TOPOLOGY_FIXTURE = {
             "address": "0xabc",
             "class": "Alacritty",
             "title": "shell",
+            "monitor": 0,
             "at": [50, 60],
             "size": [900, 700],
             "workspace": {"id": 1, "name": "1"},
@@ -46,6 +50,7 @@ TOPOLOGY_FIXTURE = {
             "address": "0xdef",
             "class": "Firefox",
             "title": "docs",
+            "monitor": 1,
             "at": [2000, 100],
             "size": [1000, 800],
             "workspace": {"id": 2, "name": "2"},
@@ -261,6 +266,79 @@ def test_topology_rejects_without_hyprland_environment(tmp_path: Path) -> None:
     asyncio.run(run_test())
 
 
+def test_active_window_returns_minimal_fields(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_active_window", {})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert set(payload) == {"address", "class", "title", "workspace", "monitor", "at", "size"}
+        assert set(payload["workspace"]) == {"id", "name"}
+
+    asyncio.run(run_test())
+
+
+def test_monitors_returns_minimal_geometry_context(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_monitors", {})
+        assert result.isError is False
+        payload = result.structuredContent
+        monitors = payload["monitors"]
+        assert len(monitors) == 2
+        for monitor in monitors:
+            assert set(monitor) == {"name", "layout_bounds", "physical_size", "scale", "pixel_ratio"}
+            assert set(monitor["layout_bounds"]) == {"x", "y", "width", "height"}
+            assert set(monitor["physical_size"]) == {"width", "height"}
+            assert set(monitor["pixel_ratio"]) == {"x", "y"}
+
+    asyncio.run(run_test())
+
+
+def test_list_windows_respects_limit_and_rejects_invalid(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        limited = await server.mcp.call_tool("wisp_hand.desktop.list_windows", {"limit": 1})
+        assert limited.isError is False
+        payload = limited.structuredContent
+        assert isinstance(payload["windows"], list)
+        assert len(payload["windows"]) == 1
+        assert set(payload["windows"][0]) == {"address", "class", "title", "workspace", "monitor", "at", "size"}
+
+        invalid = await server.mcp.call_tool("wisp_hand.desktop.list_windows", {"limit": 0})
+        assert invalid.isError is True
+        assert invalid.structuredContent["code"] == "invalid_parameters"
+
+    asyncio.run(run_test())
+
+
+def test_observe_primitives_reject_without_hyprland_environment(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner, env={})
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        for tool_name, args in [
+            ("wisp_hand.desktop.get_active_window", {}),
+            ("wisp_hand.desktop.get_monitors", {}),
+            ("wisp_hand.desktop.list_windows", {"limit": 1}),
+        ]:
+            result = await server.mcp.call_tool(tool_name, args)
+            assert result.isError is True
+            assert result.structuredContent["code"] == "unsupported_environment"
+
+    asyncio.run(run_test())
+
+
 def test_capture_scope_creates_artifact_and_metadata(tmp_path: Path) -> None:
     runner = FakeObserveRunner()
     runtime = runtime_with_config(tmp_path, runner)
@@ -289,14 +367,31 @@ def test_capture_scope_creates_artifact_and_metadata(tmp_path: Path) -> None:
         assert payload["height"] == 40
         assert payload["source_bounds"] == {"x": 10, "y": 20, "width": 100, "height": 80}
         assert payload["inline_base64"]
+        assert payload["image_uri"].startswith("wisp-hand://captures/")
+        assert payload["metadata_uri"].startswith("wisp-hand://captures/")
 
-        image_path = Path(payload["path"])
+        store = CaptureArtifactStore(base_dir=runtime.config.paths.capture_dir)
+        image_path = store.resolve_image_path(payload["capture_id"])
         assert image_path.exists()
 
-        metadata = CaptureArtifactStore(base_dir=image_path.parent).load_metadata(payload["capture_id"])
+        metadata = store.load_metadata(payload["capture_id"])
         assert metadata["capture_id"] == payload["capture_id"]
         assert metadata["scope"]["type"] == "region"
         assert metadata["source_bounds"]["width"] == 100
+
+        png_contents = await server.mcp.read_resource(payload["image_uri"])
+        assert png_contents[0].mime_type == "image/png"
+        assert isinstance(png_contents[0].content, (bytes, bytearray))
+        assert bytes(png_contents[0].content).startswith(b"\x89PNG\r\n\x1a\n")
+
+        meta_contents = await server.mcp.read_resource(payload["metadata_uri"])
+        assert meta_contents[0].mime_type == "application/json"
+        meta_raw = meta_contents[0].content
+        meta_text = meta_raw if isinstance(meta_raw, str) else bytes(meta_raw).decode("utf-8")
+        meta_payload = json.loads(meta_text)
+        assert meta_payload["capture_id"] == payload["capture_id"]
+        assert "path" not in meta_payload
+        assert "inline_base64" not in meta_payload
 
     asyncio.run(run_test())
 
@@ -337,6 +432,43 @@ def test_capture_supports_desktop_monitor_and_window_targets(tmp_path: Path) -> 
     assert monitor_capture["height"] == 1080
     assert window_capture["width"] == 1000
     assert window_capture["height"] == 800
+
+
+def test_capture_resources_raise_clear_errors_when_missing(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+    opened = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 10, "y": 20, "width": 100, "height": 80},
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    async def run_test() -> None:
+        capture = await server.mcp.call_tool(
+            "wisp_hand.capture.screen",
+            {"session_id": opened["session_id"], "target": "scope"},
+        )
+        assert capture.isError is False
+        capture_id = capture.structuredContent["capture_id"]
+        image_uri = capture.structuredContent["image_uri"]
+        metadata_uri = capture.structuredContent["metadata_uri"]
+
+        capture_dir = runtime.config.paths.capture_dir
+        (capture_dir / f"{capture_id}.png").unlink()
+        (capture_dir / f"{capture_id}.json").unlink()
+
+        with pytest.raises((ResourceError, ValueError)) as image_exc:
+            await server.mcp.read_resource(image_uri)
+        assert "capability_unavailable" in str(image_exc.value)
+
+        with pytest.raises((ResourceError, ValueError)) as meta_exc:
+            await server.mcp.read_resource(metadata_uri)
+        assert "capability_unavailable" in str(meta_exc.value)
+
+    asyncio.run(run_test())
 
 
 def test_capture_dependency_missing_is_structured_error(tmp_path: Path) -> None:

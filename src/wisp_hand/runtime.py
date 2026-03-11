@@ -53,6 +53,7 @@ from wisp_hand.vision import (
     scale_candidates,
 )
 from wisp_hand.observability import get_logger, init_logging
+from wisp_hand.resources import capture_metadata_uri, capture_png_uri
 from wisp_hand.tooling import IMPLEMENTED_TOOLS
 
 _AUDIT_CONTEXT: ContextVar[dict[str, JSONValue] | None] = ContextVar("_AUDIT_CONTEXT", default=None)
@@ -326,6 +327,95 @@ class WispHandRuntime:
 
         return self._run_tool("wisp_hand.desktop.get_topology", action=action)
 
+    @staticmethod
+    def _trim_workspace_ref(value: object) -> dict[str, object]:
+        if not isinstance(value, dict):
+            return {}
+        allowed = {"id", "name"}
+        return {key: value[key] for key in allowed if key in value}
+
+    @classmethod
+    def _trim_window_ref(cls, value: object) -> dict[str, object]:
+        if not isinstance(value, dict):
+            return {}
+        allowed = {"address", "class", "title", "workspace", "monitor", "at", "size"}
+        out: dict[str, object] = {key: value[key] for key in allowed if key in value}
+        workspace = out.get("workspace")
+        if isinstance(workspace, dict):
+            out["workspace"] = cls._trim_workspace_ref(workspace)
+        return out
+
+    def get_active_window(self) -> JSONValue:
+        def action() -> JSONValue:
+            topology = self._hyprland.get_topology(detail="summary")
+            active = topology.get("active_window")
+            if not isinstance(active, dict):
+                raise WispHandError(
+                    "capability_unavailable",
+                    "Hyprland active window payload is invalid",
+                    {"payload": active},
+                )
+
+            payload = self._trim_window_ref(active)
+            required = {"address", "class", "title", "workspace", "monitor", "at", "size"}
+            missing = sorted(required - set(payload))
+            if missing:
+                raise WispHandError(
+                    "capability_unavailable",
+                    "Hyprland active window payload is missing required fields",
+                    {"missing": missing, "payload": payload},
+                )
+            return payload
+
+        return self._run_tool("wisp_hand.desktop.get_active_window", action=action)
+
+    def get_monitors(self) -> JSONValue:
+        def action() -> JSONValue:
+            topology = self._hyprland.get_topology(detail="summary")
+            coordinate_map = self._resolve_coordinate_map(topology)
+            monitors = [
+                {
+                    "name": monitor.name,
+                    "layout_bounds": monitor.layout_bounds.model_dump(),
+                    "physical_size": monitor.physical_size.model_dump(),
+                    "scale": monitor.scale,
+                    "pixel_ratio": monitor.pixel_ratio.model_dump(),
+                }
+                for monitor in coordinate_map.monitors
+            ]
+            return {"monitors": monitors}
+
+        return self._run_tool("wisp_hand.desktop.get_monitors", action=action)
+
+    def list_windows(self, *, limit: int = 50) -> JSONValue:
+        if not isinstance(limit, int):
+            raise WispHandError("invalid_parameters", "limit must be an integer", {"limit": limit})
+        if limit <= 0:
+            raise WispHandError("invalid_parameters", "limit must be greater than zero", {"limit": limit})
+
+        def action() -> JSONValue:
+            topology = self._hyprland.get_topology(detail="full")
+            windows = topology.get("windows")
+            if not isinstance(windows, list):
+                raise WispHandError(
+                    "capability_unavailable",
+                    "Hyprland windows payload is invalid",
+                    {"payload": windows},
+                )
+            items: list[dict[str, object]] = []
+            for window in windows:
+                if not isinstance(window, dict):
+                    continue
+                trimmed = self._trim_window_ref(window)
+                required = {"address", "class", "title", "workspace", "monitor", "at", "size"}
+                if required.issubset(trimmed):
+                    items.append(trimmed)
+                if len(items) >= limit:
+                    break
+            return {"windows": items}
+
+        return self._run_tool("wisp_hand.desktop.list_windows", action=action)
+
     def get_cursor_position(self, *, session_id: str) -> JSONValue:
         def action() -> JSONValue:
             session = self._session_store.get_session(session_id)
@@ -387,6 +477,11 @@ class WispHandRuntime:
             session_id=session_id,
         )
         if isinstance(result, dict):
+            capture_id = result.get("capture_id")
+            if isinstance(capture_id, str) and capture_id:
+                result["image_uri"] = capture_png_uri(capture_id)
+                result["metadata_uri"] = capture_metadata_uri(capture_id)
+
             self._safe_log(
                 "capture.screen",
                 capture_id=result.get("capture_id"),
@@ -396,9 +491,7 @@ class WispHandRuntime:
                 downscale=result.get("downscale"),
                 inline=inline,
                 with_cursor=with_cursor,
-                path=result.get("path"),
             )
-            capture_id = result.get("capture_id")
             if isinstance(capture_id, str):
                 try:
                     summary = self._capture_store.enforce_retention(
@@ -452,12 +545,43 @@ class WispHandRuntime:
         session_id: str,
         steps: list[dict[str, JSONValue]],
         stop_on_error: bool = True,
+        return_mode: str = "summary",
     ) -> BatchRunResult:
+        allowed_modes = {"summary", "full"}
+        if not isinstance(return_mode, str) or return_mode not in allowed_modes:
+            raise WispHandError(
+                "invalid_parameters",
+                "return_mode must be one of: summary, full",
+                {"return_mode": return_mode, "allowed": sorted(allowed_modes)},
+            )
+
         def action() -> BatchRunResult:
             session = self._session_store.get_session(session_id)
             compiled_steps = self._compile_batch_steps(session_id=session_id, steps=steps)
             batch_id = str(uuid4())
             step_results: list[BatchStepResult] = []
+
+            def summarize_output(step_type: str, output: JSONValue) -> JSONValue | None:
+                if step_type == "capture" and isinstance(output, dict):
+                    capture_id = output.get("capture_id")
+                    if not isinstance(capture_id, str) or not capture_id:
+                        return None
+                    summary: dict[str, JSONValue] = {"capture_id": capture_id}
+                    for key in ("image_uri", "metadata_uri"):
+                        value = output.get(key)
+                        if isinstance(value, str) and value:
+                            summary[key] = value
+                    return summary
+                return None
+
+            def summarize_error(payload: dict[str, JSONValue]) -> dict[str, JSONValue]:
+                code = payload.get("code")
+                message = payload.get("message")
+                return {
+                    "code": str(code) if isinstance(code, str) else "internal_error",
+                    "message": str(message) if isinstance(message, str) else "Internal server error",
+                    "details": {},
+                }
 
             for index, compiled in enumerate(compiled_steps):
                 with self._audit_context(
@@ -471,12 +595,13 @@ class WispHandRuntime:
                     try:
                         output = compiled.executor()
                     except WispHandError as exc:
+                        error_payload = exc.to_payload()
                         step_results.append(
                             {
                                 "index": index,
                                 "type": compiled.step_type,
                                 "status": "error",
-                                "error": exc.to_payload(),
+                                "error": summarize_error(error_payload) if return_mode == "summary" else error_payload,
                             }
                         )
                         if stop_on_error:
@@ -490,17 +615,24 @@ class WispHandRuntime:
                             )
                             break
                     else:
+                        step_payload: BatchStepResult = {
+                            "index": index,
+                            "type": compiled.step_type,
+                            "status": "ok",
+                        }
+                        if return_mode == "full":
+                            step_payload["output"] = output
+                        else:
+                            summarized = summarize_output(compiled.step_type, output)
+                            if summarized is not None:
+                                step_payload["output"] = summarized
                         step_results.append(
-                            {
-                                "index": index,
-                                "type": compiled.step_type,
-                                "status": "ok",
-                                "output": output,
-                            }
+                            step_payload
                         )
 
             return {
                 "batch_id": batch_id,
+                "return_mode": return_mode,
                 "session_id": session.session_id,
                 "scope": session.scope,
                 "stop_on_error": stop_on_error,
@@ -555,9 +687,22 @@ class WispHandRuntime:
         *,
         capture_id: str,
         target: str,
+        limit: int = 3,
+        space: str = "scope",
     ) -> VisionLocateResult:
         if not target:
             raise WispHandError("invalid_parameters", "target must not be empty")
+        if not isinstance(limit, int):
+            raise WispHandError("invalid_parameters", "limit must be an integer", {"limit": limit})
+        if limit <= 0:
+            raise WispHandError("invalid_parameters", "limit must be greater than zero", {"limit": limit})
+        allowed_spaces = {"scope", "image", "both"}
+        if not isinstance(space, str) or space not in allowed_spaces:
+            raise WispHandError(
+                "invalid_parameters",
+                "space must be one of: scope, image, both",
+                {"space": space, "allowed": sorted(allowed_spaces)},
+            )
         image = self._load_vision_image(capture_id=capture_id, inline_image=None)
         provider = self._require_vision_provider()
 
@@ -568,8 +713,9 @@ class WispHandRuntime:
             pixel_ratio_x = metadata.get("pixel_ratio_x") if isinstance(metadata, dict) else None
             pixel_ratio_y = metadata.get("pixel_ratio_y") if isinstance(metadata, dict) else None
 
+            raw_candidates = payload["candidates"][:limit]
             candidates_image = scale_candidates(
-                candidates=payload["candidates"],
+                candidates=raw_candidates,
                 from_width=image.processed_width,
                 from_height=image.processed_height,
                 to_width=image.width,
@@ -607,7 +753,7 @@ class WispHandRuntime:
                         }
                     )
 
-            return {
+            result: dict[str, object] = {
                 "provider": payload["provider"],
                 "model": payload["model"],
                 "input_source": image.input_source,
@@ -617,10 +763,13 @@ class WispHandRuntime:
                 "processed_width": image.processed_width,
                 "processed_height": image.processed_height,
                 "target": target,
-                "candidates_scope": candidates_scope,  # type: ignore[typeddict-item]
-                "candidates_image": candidates_image,  # type: ignore[typeddict-item]
                 "latency_ms": payload["latency_ms"],
             }
+            if space in {"scope", "both"}:
+                result["candidates_scope"] = candidates_scope
+            if space in {"image", "both"}:
+                result["candidates_image"] = candidates_image
+            return result  # type: ignore[return-value]
 
         with self._vision_audit_context(image=image, provider=provider):
             result = self._run_tool("wisp_hand.vision.locate", action=action)
@@ -630,8 +779,8 @@ class WispHandRuntime:
                 input_source=result["input_source"],
                 capture_id=result["capture_id"],
                 target=result["target"],
-                candidates_scope=len(result["candidates_scope"]),
-                candidates_image=len(result["candidates_image"]),
+                candidates_scope=len(result.get("candidates_scope") or []),
+                candidates_image=len(result.get("candidates_image") or []),
             )
             return result
 

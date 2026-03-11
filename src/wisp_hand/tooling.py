@@ -7,6 +7,9 @@ IMPLEMENTED_TOOLS = [
     f"{TOOL_NAMESPACE}.session.open",
     f"{TOOL_NAMESPACE}.session.close",
     f"{TOOL_NAMESPACE}.desktop.get_topology",
+    f"{TOOL_NAMESPACE}.desktop.get_active_window",
+    f"{TOOL_NAMESPACE}.desktop.get_monitors",
+    f"{TOOL_NAMESPACE}.desktop.list_windows",
     f"{TOOL_NAMESPACE}.cursor.get_position",
     f"{TOOL_NAMESPACE}.capture.screen",
     f"{TOOL_NAMESPACE}.wait",
@@ -21,4 +24,3 @@ IMPLEMENTED_TOOLS = [
     f"{TOOL_NAMESPACE}.keyboard.type",
     f"{TOOL_NAMESPACE}.keyboard.press",
 ]
-

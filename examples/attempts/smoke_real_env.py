@@ -437,7 +437,8 @@ def main(argv: list[str] | None = None) -> int:
                             else None
                         ),
                         "capture_id": captured.get("capture_id"),
-                        "path": captured.get("path"),
+                        "image_uri": captured.get("image_uri"),
+                        "metadata_uri": captured.get("metadata_uri"),
                     }
                 )
             except WispHandError as exc:
@@ -664,7 +665,8 @@ def main(argv: list[str] | None = None) -> int:
                     "capture_id": cap.get("capture_id"),
                     "width": cap.get("width"),
                     "height": cap.get("height"),
-                    "path": cap.get("path"),
+                    "image_uri": cap.get("image_uri"),
+                    "metadata_uri": cap.get("metadata_uri"),
                 }
                 report["progress"] = {"phase": "vision", "step": "describe", "updated_at": time.time()}
                 write_out()

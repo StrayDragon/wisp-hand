@@ -309,7 +309,6 @@ max_concurrency = 1
             "width": 150,
             "height": 100,
             "mime_type": "image/png",
-            "path": str(image_path),
             "created_at": "2026-03-09T00:00:00+00:00",
             "source_bounds": {"x": 0, "y": 0, "width": 120, "height": 80},
             "source_coordinate_space": "layout_px",
@@ -326,7 +325,7 @@ max_concurrency = 1
     async def run_test() -> None:
         result = await server.mcp.call_tool(
             "wisp_hand.vision.locate",
-            {"capture_id": capture_id, "target": "submit"},
+            {"capture_id": capture_id, "target": "submit", "space": "both"},
         )
         assert result.isError is False
         payload = result.structuredContent

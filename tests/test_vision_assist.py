@@ -101,7 +101,6 @@ def write_capture(capture_dir: Path, *, capture_id: str, width: int, height: int
             "width": width,
             "height": height,
             "mime_type": "image/png",
-            "path": str(image_path),
             "created_at": "2026-03-09T00:00:00+00:00",
             "source_bounds": {"x": 0, "y": 0, "width": width, "height": height},
             "source_coordinate_space": "layout_px",
@@ -197,8 +196,12 @@ def test_vision_locate_uses_capture_artifacts_and_records_audit_fields(tmp_path:
             "reason": "matches the button label",
         }
     ]
-    assert locate["candidates_image"] == expected_candidates
     assert locate["candidates_scope"] == expected_candidates
+    assert "candidates_image" not in locate
+
+    locate_both = runtime.vision_locate(capture_id="cap-1", target="submit button", space="both")
+    assert locate_both["candidates_image"] == expected_candidates
+    assert locate_both["candidates_scope"] == expected_candidates
 
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()
@@ -208,6 +211,32 @@ def test_vision_locate_uses_capture_artifacts_and_records_audit_fields(tmp_path:
     assert locate_entry["capture_id"] == "cap-1"
     assert locate_entry["provider"] == "ollama"
     assert locate_entry["model"] == "llava"
+
+
+def test_vision_locate_limits_candidates_by_default(tmp_path: Path) -> None:
+    transport = FakeOllamaTransport(
+        response={
+            "response": json.dumps(
+                {
+                    "candidates": [
+                        {"x": 1, "y": 2, "width": 3, "height": 4, "confidence": 0.9, "reason": "a"},
+                        {"x": 5, "y": 6, "width": 7, "height": 8, "confidence": 0.8, "reason": "b"},
+                        {"x": 9, "y": 10, "width": 11, "height": 12, "confidence": 0.7, "reason": "c"},
+                        {"x": 13, "y": 14, "width": 15, "height": 16, "confidence": 0.6, "reason": "d"},
+                        {"x": 17, "y": 18, "width": 19, "height": 20, "confidence": 0.5, "reason": "e"},
+                    ]
+                }
+            )
+        }
+    )
+    runtime, _ = build_runtime(tmp_path, transport=transport)
+    write_capture(runtime.config.paths.capture_dir, capture_id="cap-limit", width=100, height=80, color=(0, 0, 0))
+
+    default_limited = runtime.vision_locate(capture_id="cap-limit", target="target")
+    assert len(default_limited["candidates_scope"]) == 3
+
+    explicit = runtime.vision_locate(capture_id="cap-limit", target="target", limit=5)
+    assert len(explicit["candidates_scope"]) == 5
 
 
 def test_vision_describe_supports_capture_and_inline_sources(tmp_path: Path) -> None:

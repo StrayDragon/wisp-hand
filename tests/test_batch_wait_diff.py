@@ -261,7 +261,6 @@ def write_capture(
             "width": size[0],
             "height": size[1],
             "mime_type": "image/png",
-            "path": str(image_path),
             "created_at": "2026-03-09T00:00:00+00:00",
             "source_bounds": {"x": 0, "y": 0, "width": size[0], "height": size[1]},
             "downscale": None,
@@ -291,6 +290,7 @@ def test_batch_runs_steps_in_order_and_audit_links_steps(tmp_path: Path) -> None
     )
 
     assert result["session_id"] == session["session_id"]
+    assert result["return_mode"] == "summary"
     assert [step["type"] for step in result["steps"]] == ["move", "wait", "type", "capture"]
     assert [step["status"] for step in result["steps"]] == ["ok", "ok", "ok", "ok"]
     assert backend.calls == [
@@ -299,9 +299,13 @@ def test_batch_runs_steps_in_order_and_audit_links_steps(tmp_path: Path) -> None
     ]
     assert sleeper.calls == [0.25]
 
+    assert "output" not in result["steps"][0]
+    assert "output" not in result["steps"][1]
+    assert "output" not in result["steps"][2]
     capture_output = result["steps"][3]["output"]
     assert isinstance(capture_output, dict)
-    assert capture_output["target"] == "scope"
+    assert "target" not in capture_output
+    assert isinstance(capture_output.get("capture_id"), str) and capture_output["capture_id"]
 
     audit_path = runtime.config.paths.audit_file
     assert audit_path is not None and audit_path.exists()
@@ -315,6 +319,30 @@ def test_batch_runs_steps_in_order_and_audit_links_steps(tmp_path: Path) -> None
     }
     assert {entry["batch_id"] for entry in child_entries} == {result["batch_id"]}
     assert {entry["step_index"] for entry in child_entries} == {0, 1, 2, 3}
+
+
+def test_batch_return_mode_full_keeps_step_outputs(tmp_path: Path) -> None:
+    runtime, _, _ = build_runtime(tmp_path)
+    session = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 0, "y": 0, "width": 10, "height": 10},
+        armed=True,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    result = runtime.batch_run(
+        session_id=session["session_id"],
+        stop_on_error=True,
+        return_mode="full",
+        steps=[{"type": "capture", "target": "scope"}],
+    )
+    assert result["return_mode"] == "full"
+    assert result["steps"][0]["status"] == "ok"
+    output = result["steps"][0]["output"]
+    assert isinstance(output, dict)
+    assert output["target"] == "scope"
+    assert isinstance(output.get("capture_id"), str) and output["capture_id"]
 
 
 def test_batch_fail_fast_continue_and_invalid_step_type(tmp_path: Path) -> None:

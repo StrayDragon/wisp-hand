@@ -26,13 +26,14 @@ uvx wisp-hand-mcp doctor --json | jq .
 推荐做法：
 
 1. 手动把 Godot 切到前台（确保它是 active window）
-2. 调用 `wisp_hand.desktop.get_topology`（默认 `detail=summary`），读取 `active_window` 的 `address/class/title`（需要窗口列表/排障时再用 `detail=full/raw`）
+2. 调用 `wisp_hand.desktop.get_active_window`，读取 `address/class/title`
 3. 用其中一个作为后续 `scope_target`
 
 实践建议：
 
 - 优先使用 `address`（通常最稳定）
 - 如果你需要跨启动定位窗口，可用 `class + title` 做匹配，但要接受 title 变化的可能
+- 只有在诊断/排障时才用 `wisp_hand.desktop.get_topology(detail=full|raw)`（它更重，不建议高频调用）
 
 ## 2) 打开 window scope session（先 dry-run）
 
@@ -52,6 +53,8 @@ uvx wisp-hand-mcp doctor --json | jq .
 
 如果你发现 click 会偏移，先看 [坐标与缩放](../concepts/coordinates.md) 的诊断流程。
 
+必要时可以先调用 `wisp_hand.desktop.get_monitors` 获取 mixed-scale 映射上下文，用于解释多显示器 + 缩放导致的坐标差异。
+
 ## 3) 定位并点击 “Run/Play”
 
 有两种路线：
@@ -70,6 +73,11 @@ uvx wisp-hand-mcp doctor --json | jq .
 
 注意：视觉只给候选，最终输入仍要走 scope + policy。
 
+如果你的外部 AI 需要“看见截图内容”但不想依赖本地路径：
+
+- 从 `capture.screen` 的 `image_uri` / `metadata_uri` 得到资源 URI
+- 用 MCP `resources/read` 读取 png 与 metadata（按需拉取，避免默认把大内容塞进 tool result）
+
 ## 4) 等待并做截图验证
 
 最小验证建议用 `capture.diff`：
@@ -83,6 +91,7 @@ uvx wisp-hand-mcp doctor --json | jq .
 如果你想把“动作 + 等待 + 截图”变成一次调用，使用 `wisp_hand.batch.run`：
 
 - steps: `click -> wait -> capture`
+- 默认 `return_mode=summary` 会裁剪逐步输出；排障时可用 `return_mode=full`
 
 ## 5) 游戏窗口（新窗口/全屏）怎么处理
 
@@ -96,6 +105,7 @@ uvx wisp-hand-mcp doctor --json | jq .
 
 ## 6) 推荐的 agent 调用策略（token/延迟）
 
-- `desktop.get_topology` 不要高频轮询：它是“选择 scope/窗口”的工具，不是每一步都要拉的状态。
+- `desktop.get_active_window/get_monitors/list_windows` 优先用于“选择 scope/窗口”，避免高频拉全量 topology。
+- `desktop.get_topology` 不要高频轮询：它是诊断工具（必要时再用 `detail=full/raw`）。
 - 高频状态判断优先用：`capture.screen` + `capture.diff`（更稳定、可验证、也更契合 GUI 回归）。
 - 需要减少往返时，用：`batch.run` 把多步动作串起来。
