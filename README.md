@@ -29,6 +29,44 @@
 - 用 `capture + diff` 做 GUI 行为验证（动作前后是否发生变化）
 - 以 session/scope 为安全边界做可审计的输入回放与排障
 
+## 安装
+
+运行环境要求：
+
+- Linux + Wayland + Hyprland
+- 推荐安装 `uv`
+- 如果使用 `pip`/虚拟环境安装，需要 Python `3.14+`
+- `hyprctl`、`grim`、`wtype`
+
+常见可选依赖：
+
+- `slurp`：手动框选 region
+- `ollama`：启用本地视觉
+- `node` / `npx`：使用 MCP Inspector
+
+先做一次环境自检：
+
+```bash
+uvx wisp-hand doctor --json | jq .
+```
+
+安装 CLI：
+
+```bash
+uv tool install wisp-hand
+```
+
+如果你更习惯传统 Python 安装方式：
+
+```bash
+pip install wisp-hand
+```
+
+完整安装说明见：
+
+- 文档站：[安装与依赖](https://straydragon.github.io/wisp-hand/installation/)
+- 仓库文档：[docs/mkdocs/installation.md](https://github.com/StrayDragon/wisp-hand/blob/main/docs/mkdocs/installation.md)
+
 ## 快速开始
 
 连接前自检：
@@ -61,6 +99,10 @@ just inspector
 ```bash
 just docs-serve
 ```
+
+更多启动与验证步骤见：
+
+- 文档站：[快速开始](https://straydragon.github.io/wisp-hand/getting-started/)
 
 ## 工具概览（MCP tools）
 
@@ -110,7 +152,7 @@ Wisp Hand 的输入必须在 session 内执行，并且 session 绑定明确的 
 4. `pointer.click` 点击运行，`wait` 等待 UI 变化
 5. 再 `capture.screen` 并用 `capture.diff` 做验证
 
-更完整流程见文档：[docs/mkdocs/scenarios/godot.md](docs/mkdocs/scenarios/godot.md)。
+更完整流程见文档：[Godot 场景](https://straydragon.github.io/wisp-hand/scenarios/godot/)。
 
 ## 坐标与缩放（重要）
 
@@ -195,6 +237,13 @@ uv run mkdocs serve
 uv run mkdocs build --strict
 ```
 
+常用入口：
+
+- 文档首页：https://straydragon.github.io/wisp-hand/
+- 安装与依赖：https://straydragon.github.io/wisp-hand/installation/
+- 快速开始：https://straydragon.github.io/wisp-hand/getting-started/
+- Godot 场景：https://straydragon.github.io/wisp-hand/scenarios/godot/
+
 ## 排障
 
-见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+见 [排障文档](https://straydragon.github.io/wisp-hand/troubleshooting/)。

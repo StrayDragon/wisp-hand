@@ -18,8 +18,8 @@ Wisp Hand 是一个面向 Hyprland/Wayland 的 computer-use MCP server 基座：
 
 ## 从这里开始
 
+- [安装与依赖](installation.md)
 - [快速开始](getting-started.md)
 - [Godot 场景](scenarios/godot.md)
 - [工具参考](tools.md)
 - [排障](troubleshooting.md)
-

@@ -1,13 +1,8 @@
 # 快速开始
 
-## 前置条件
+安装与前置依赖请先看：
 
-- 运行在 Hyprland/Wayland 会话中（环境变量 `HYPRLAND_INSTANCE_SIGNATURE` 必须存在）
-- 已安装依赖二进制：
-  - `hyprctl`（拓扑/窗口/光标）
-  - `grim`（截图）
-  - `wtype`（键盘/鼠标输入）
-  - `slurp`（可选：你手动框选 region 时会用到）
+- [安装与依赖](installation.md)
 
 ## 1) 连接前自检
 
@@ -52,7 +47,7 @@ python -m wisp_hand mcp --config ./config.toml
 just inspector
 ```
 
-这会执行：
+如果你本机没有 `just`，也可以直接运行：
 
 ```bash
 npx --yes @modelcontextprotocol/inspector -- uv run wisp-hand mcp --config docs/example_config.toml --transport stdio
