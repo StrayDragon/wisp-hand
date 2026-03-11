@@ -14,17 +14,21 @@ from wisp_hand.server import WispHandServer
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="wisp-hand-mcp")
-    parser.add_argument("--config", type=Path, help="Path to the runtime TOML config file.")
-    parser.add_argument(
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--config", type=Path, help="Path to the runtime TOML config file.")
+    common.add_argument(
         "--transport",
         choices=["stdio", "sse", "streamable-http"],
         help="Override transport configured in the runtime config file.",
     )
-    subparsers = parser.add_subparsers(dest="command")
 
-    doctor = subparsers.add_parser("doctor", help="Run a runtime preflight check.")
+    parser = argparse.ArgumentParser(prog="wisp-hand")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    doctor = subparsers.add_parser("doctor", parents=[common], help="Run a runtime preflight check.")
     doctor.add_argument("--json", action="store_true", help="Emit a machine-readable JSON report to stdout.")
+
+    subparsers.add_parser("mcp", parents=[common], help="Start the MCP server.")
     return parser
 
 
@@ -32,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        command = args.command or "serve"
+        command = args.command
         config = load_runtime_config(args.config)
         if args.transport is not None:
             server_config = config.server.model_copy(update={"transport": args.transport})
@@ -45,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(json.dumps(report, ensure_ascii=True, sort_keys=True), file=sys.stderr)
             return 0 if report.get("status") == "ready" else 1
+
+        if command != "mcp":
+            raise WispHandError("invalid_parameters", "Unknown command", {"command": command})
 
         # Startup preflight (stderr-only, safe for stdio transport).
         report = build_discovery_report(config=config, include_path_checks=True)

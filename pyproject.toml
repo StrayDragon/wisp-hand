@@ -1,11 +1,12 @@
 [project]
-name = "wisp-hand-mcp"
+name = "wisp-hand"
 version = "0.1.0"
-description = "Hyprland-first computer-use MCP server foundation"
+description = "Hyprland-first computer-use foundation for MCP clients (observe/capture/input/tasks)."
 readme = "README.md"
 authors = [
     { name = "straydragon", email = "straydragonl@foxmail.com" }
 ]
+license = { file = "LICENSE" }
 requires-python = ">=3.14"
 dependencies = [
     "mcp[cli]>=1.26,<2",
@@ -15,7 +16,12 @@ dependencies = [
 ]
 
 [project.scripts]
-wisp-hand-mcp = "wisp_hand.cli:main"
+wisp-hand = "wisp_hand.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/StrayDragon/wisp-hand"
+Repository = "https://github.com/StrayDragon/wisp-hand"
+Issues = "https://github.com/StrayDragon/wisp-hand/issues"
 
 [build-system]
 requires = ["uv_build>=0.10.8,<0.11.0"]
