@@ -6,7 +6,7 @@
   <a href="https://pypi.org/project/wisp-hand/"><img alt="PyPI" src="https://img.shields.io/pypi/v/wisp-hand.svg"></a>
   <a href="https://pypi.org/project/wisp-hand/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/wisp-hand.svg"></a>
   <a href="https://github.com/StrayDragon/wisp-hand/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/StrayDragon/wisp-hand/actions/workflows/ci.yaml/badge.svg"></a>
-  <a href="https://straydragon.github.io/wisp-hand/"><img alt="Docs" src="https://img.shields.io/badge/docs-mkdocs%20material-526CFE"></a>
+  <a href="https://github.com/StrayDragon/wisp-hand/actions/workflows/deploy-pages.yaml"><img alt="Pages" src="https://github.com/StrayDragon/wisp-hand/actions/workflows/deploy-pages.yaml/badge.svg"></a>
   <a href="https://github.com/StrayDragon/wisp-hand/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/StrayDragon/wisp-hand.svg"></a>
 </p>
 
