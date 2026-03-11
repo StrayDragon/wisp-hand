@@ -1,6 +1,6 @@
 [project]
 name = "wisp-hand"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hyprland-first computer-use foundation for MCP clients (observe/capture/input/tasks)."
 readme = "README.md"
 authors = [
