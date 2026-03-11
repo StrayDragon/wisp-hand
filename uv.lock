@@ -978,7 +978,7 @@ wheels = [
 ]
 
 [[package]]
-name = "wisp-hand-mcp"
+name = "wisp-hand"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -30,13 +30,12 @@ class DiscoveryIssue:
 
 
 def runtime_version() -> str:
-    for candidate in ("wisp-hand-mcp", "wisp-hand"):
-        try:
-            return pkg_version(candidate)
-        except PackageNotFoundError:
-            continue
-        except Exception:  # pragma: no cover - defensive
-            continue
+    try:
+        return pkg_version("wisp-hand")
+    except PackageNotFoundError:
+        return "unknown"
+    except Exception:  # pragma: no cover - defensive
+        return "unknown"
     return "unknown"
 
 

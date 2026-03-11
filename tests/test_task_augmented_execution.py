@@ -43,7 +43,7 @@ optional_binaries = []
         }
         server = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "wisp_hand", "--config", str(config_path)],
+            args=["-m", "wisp_hand", "mcp", "--config", str(config_path)],
             env=env,
             cwd=repo_root(),
         )
@@ -113,7 +113,7 @@ optional_binaries = []
         }
         server = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "wisp_hand", "--config", str(config_path)],
+            args=["-m", "wisp_hand", "mcp", "--config", str(config_path)],
             env=env,
             cwd=repo_root(),
         )

@@ -99,7 +99,7 @@ async def main_async(args: argparse.Namespace) -> int:
     transport: str = args.transport
     out_path: Path | None = Path(args.out) if args.out else None
 
-    with tempfile.TemporaryDirectory(prefix="wisp-hand-mcp-smoke-") as temp_root_str:
+    with tempfile.TemporaryDirectory(prefix="wisp-hand-smoke-") as temp_root_str:
         temp_root = Path(temp_root_str)
         port = free_tcp_port() if transport != "stdio" else None
         config_path = write_config(
@@ -117,7 +117,7 @@ async def main_async(args: argparse.Namespace) -> int:
         if transport == "stdio":
             server = StdioServerParameters(
                 command=sys.executable,
-                args=["-m", "wisp_hand", "--config", str(config_path)],
+                args=["-m", "wisp_hand", "mcp", "--config", str(config_path)],
                 env=env,
                 cwd=repo_root(),
             )
@@ -129,7 +129,7 @@ async def main_async(args: argparse.Namespace) -> int:
                 raise RuntimeError("port was not set for sse transport")
 
             proc = await anyio.open_process(
-                [sys.executable, "-m", "wisp_hand", "--config", str(config_path)],
+                [sys.executable, "-m", "wisp_hand", "mcp", "--config", str(config_path)],
                 env={**os.environ, **env},
                 cwd=repo_root(),
                 stdout=sys.stdout,
