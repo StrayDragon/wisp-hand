@@ -1,5 +1,8 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
+_default:
+  @just -l
+
 # Default runtime config used by `just ...` commands.
 #
 # Override on demand:
