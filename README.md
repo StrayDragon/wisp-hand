@@ -1,11 +1,12 @@
 <p align="center">
-  <img src="docs/assets/logo.webp" alt="Wisp Hand" width="180" />
+  <img src="https://raw.githubusercontent.com/StrayDragon/wisp-hand/main/docs/assets/logo.webp" alt="Wisp Hand" width="180" />
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/wisp-hand/"><img alt="PyPI" src="https://img.shields.io/pypi/v/wisp-hand.svg"></a>
   <a href="https://pypi.org/project/wisp-hand/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/wisp-hand.svg"></a>
-  <a href="https://github.com/StrayDragon/wisp-hand/actions/workflows/ci.yaml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/StrayDragon/wisp-hand/ci.yaml?branch=main"></a>
+  <a href="https://github.com/StrayDragon/wisp-hand/actions/workflows/ci.yaml"><img alt="CI" src="https://github.com/StrayDragon/wisp-hand/actions/workflows/ci.yaml/badge.svg"></a>
+  <a href="https://straydragon.github.io/wisp-hand/"><img alt="Docs" src="https://img.shields.io/badge/docs-mkdocs%20material-526CFE"></a>
   <a href="https://github.com/StrayDragon/wisp-hand/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/StrayDragon/wisp-hand.svg"></a>
 </p>
 
