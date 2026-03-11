@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from wisp_hand.errors import WispHandError
+from wisp_hand.shared.errors import WispHandError
 
 
 def topology_fingerprint(topology: dict[str, Any]) -> str:

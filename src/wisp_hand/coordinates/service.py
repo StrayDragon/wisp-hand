@@ -5,15 +5,15 @@ from pathlib import Path
 from time import sleep
 from typing import Any
 
-from wisp_hand.command import CommandRunner
-from wisp_hand.config import CoordinatesConfig
+from wisp_hand.infra.command import CommandRunner
+from wisp_hand.infra.config import CoordinatesConfig
 from wisp_hand.coordinates.backends import resolve_backend, resolve_hyprctl_infer
 from wisp_hand.coordinates.cache import CoordinateMapCache
 from wisp_hand.coordinates.fingerprint import topology_fingerprint
 from wisp_hand.coordinates.models import CoordinateMap
-from wisp_hand.errors import WispHandError
-from wisp_hand.input_backend import InputBackend
-from wisp_hand.hyprland import HyprlandAdapter
+from wisp_hand.shared.errors import WispHandError
+from wisp_hand.input.backend import InputBackend
+from wisp_hand.desktop.hyprland_adapter import HyprlandAdapter
 
 
 @dataclass(frozen=True, slots=True)

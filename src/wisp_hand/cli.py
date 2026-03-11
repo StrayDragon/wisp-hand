@@ -5,12 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-from wisp_hand.config import load_runtime_config
-from wisp_hand.discovery import build_discovery_report, runtime_version
-from wisp_hand.errors import WispHandError
-from wisp_hand.observability import init_logging
-from wisp_hand.runtime import WispHandRuntime
-from wisp_hand.server import WispHandServer
+from wisp_hand.infra.config import load_runtime_config
+from wisp_hand.infra.discovery import build_discovery_report, runtime_version
+from wisp_hand.shared.errors import WispHandError
+from wisp_hand.infra.observability import init_logging
+from wisp_hand.app.runtime import WispHandRuntime
+from wisp_hand.protocol.mcp_server import WispHandServer
 
 
 def build_parser() -> argparse.ArgumentParser:

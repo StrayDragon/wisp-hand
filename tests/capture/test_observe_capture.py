@@ -1,0 +1,498 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from PIL import Image
+from mcp.server.fastmcp.exceptions import ResourceError
+
+from wisp_hand.capabilities import DependencyProbe
+from wisp_hand.capture import CaptureArtifactStore, CaptureEngine
+from wisp_hand.infra.command import CommandResult
+from wisp_hand.infra.config import load_runtime_config
+from wisp_hand.desktop.hyprland_adapter import HyprlandAdapter, desktop_bounds
+from wisp_hand.app.runtime import WispHandRuntime
+from wisp_hand.protocol.mcp_server import WispHandServer
+
+TOPOLOGY_FIXTURE = {
+    "monitors": [
+        {"id": 0, "name": "HDMI-A-1", "x": 0, "y": 0, "width": 1920, "height": 1080},
+        {"id": 1, "name": "DP-1", "x": 1920, "y": 0, "width": 1280, "height": 1080},
+    ],
+    "workspaces": [
+        {"id": 1, "name": "1", "monitor": "HDMI-A-1"},
+        {"id": 2, "name": "2", "monitor": "DP-1"},
+    ],
+    "activeworkspace": {"id": 1, "name": "1", "monitor": "HDMI-A-1"},
+    "activewindow": {
+        "address": "0xabc",
+        "class": "Alacritty",
+        "title": "shell",
+        "monitor": 0,
+        "at": [50, 60],
+        "size": [900, 700],
+        "workspace": {"id": 1, "name": "1"},
+    },
+    "clients": [
+        {
+            "address": "0xabc",
+            "class": "Alacritty",
+            "title": "shell",
+            "monitor": 0,
+            "at": [50, 60],
+            "size": [900, 700],
+            "workspace": {"id": 1, "name": "1"},
+        },
+        {
+            "address": "0xdef",
+            "class": "Firefox",
+            "title": "docs",
+            "monitor": 1,
+            "at": [2000, 100],
+            "size": [1000, 800],
+            "workspace": {"id": 2, "name": "2"},
+        },
+    ],
+    "cursorpos": {"x": 140, "y": 250},
+}
+
+
+class FakeObserveRunner:
+    def __init__(self, *, fail_grim: bool = False) -> None:
+        self.calls: list[list[str]] = []
+        self.fail_grim = fail_grim
+
+    def __call__(self, args: list[str]) -> CommandResult:
+        self.calls.append(args)
+
+        if args[0] == "hyprctl":
+            return CommandResult(
+                args=args,
+                stdout=json.dumps(TOPOLOGY_FIXTURE[args[2]]),
+                stderr="",
+                returncode=0,
+            )
+
+        if args[0] == "grim":
+            if self.fail_grim:
+                return CommandResult(args=args, stdout="", stderr="grim failed", returncode=1)
+
+            geometry = None
+            if "-g" in args:
+                geometry = self._parse_geometry(args[args.index("-g") + 1])
+            else:
+                geometry = desktop_bounds({"monitors": TOPOLOGY_FIXTURE["monitors"]})
+
+            output_path = Path(args[-1])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            Image.new("RGB", (geometry["width"], geometry["height"]), color=(12, 34, 56)).save(
+                output_path,
+                format="PNG",
+            )
+            return CommandResult(args=args, stdout="", stderr="", returncode=0)
+
+        raise AssertionError(f"Unexpected command: {args}")
+
+    @staticmethod
+    def _parse_geometry(value: str) -> dict[str, int]:
+        origin, size = value.split(" ")
+        x, y = origin.split(",")
+        width, height = size.split("x")
+        return {
+            "x": int(x),
+            "y": int(y),
+            "width": int(width),
+            "height": int(height),
+        }
+
+
+def build_runtime(
+    tmp_path: Path,
+    runner: FakeObserveRunner,
+    *,
+    env: dict[str, str] | None = None,
+    binary_resolver=None,
+) -> WispHandRuntime:
+    config = load_runtime_config(
+        Path(
+            tmp_path / "config.toml"
+        )
+    )
+    if env is None:
+        env = {"HYPRLAND_INSTANCE_SIGNATURE": "fixture"}
+    resolver = binary_resolver or (lambda name: f"/usr/bin/{name}")
+    return WispHandRuntime(
+        config=config,
+        dependency_probe=DependencyProbe(
+            required_binaries=["hyprctl", "grim", "slurp"],
+            optional_binaries=["wtype"],
+            binary_resolver=resolver,
+            env=env,
+        ),
+        hyprland_adapter=HyprlandAdapter(runner=runner, env=env),
+        capture_engine=CaptureEngine(
+            artifact_store=CaptureArtifactStore(base_dir=config.paths.capture_dir),
+            runner=runner,
+            binary_resolver=resolver,
+        ),
+    )
+
+
+def write_config(path: Path) -> None:
+    path.write_text(
+        """
+[server]
+transport = "stdio"
+
+[paths]
+state_dir = "./state"
+audit_file = "./state/audit.jsonl"
+runtime_log_file = "./state/runtime.jsonl"
+capture_dir = "./state/captures"
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def runtime_with_config(tmp_path: Path, runner: FakeObserveRunner, **kwargs: Any) -> WispHandRuntime:
+    write_config(tmp_path / "config.toml")
+    return build_runtime(tmp_path, runner, **kwargs)
+
+
+def test_topology_and_cursor_relative_coordinates(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+    opened = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 100, "y": 200, "width": 300, "height": 300},
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    async def run_test() -> None:
+        topology = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
+        assert topology.isError is False
+        assert len(topology.structuredContent["monitors"]) == 2
+        assert "windows" not in topology.structuredContent
+
+        cursor = await server.mcp.call_tool(
+            "wisp_hand.cursor.get_position",
+            {"session_id": opened["session_id"]},
+        )
+        assert cursor.isError is False
+        assert cursor.structuredContent == {
+            "x": 140,
+            "y": 250,
+            "scope_x": 40,
+            "scope_y": 50,
+        }
+
+    asyncio.run(run_test())
+
+
+def test_topology_detail_full_includes_windows(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "full"})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert isinstance(payload.get("windows"), list)
+        assert payload["windows"]
+        assert "raw" not in payload
+
+    asyncio.run(run_test())
+
+
+def test_topology_detail_raw_includes_raw_payload(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "raw"})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert isinstance(payload.get("windows"), list)
+        assert isinstance(payload.get("raw"), dict)
+        assert "windows" in payload["raw"]
+
+    asyncio.run(run_test())
+
+
+def test_topology_rejects_invalid_detail(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {"detail": "wat"})
+        assert result.isError is True
+        assert result.structuredContent["code"] == "invalid_parameters"
+
+    asyncio.run(run_test())
+
+
+def test_topology_summary_does_not_query_clients(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
+        assert result.isError is False
+
+    asyncio.run(run_test())
+    assert all(call[:3] != ["hyprctl", "-j", "clients"] for call in runner.calls)
+
+
+def test_topology_rejects_without_hyprland_environment(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner, env={})
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_topology", {})
+        assert result.isError is True
+        assert result.structuredContent["code"] == "unsupported_environment"
+
+    asyncio.run(run_test())
+
+
+def test_active_window_returns_minimal_fields(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_active_window", {})
+        assert result.isError is False
+        payload = result.structuredContent
+        assert set(payload) == {"address", "class", "title", "workspace", "monitor", "at", "size"}
+        assert set(payload["workspace"]) == {"id", "name"}
+
+    asyncio.run(run_test())
+
+
+def test_monitors_returns_minimal_geometry_context(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.desktop.get_monitors", {})
+        assert result.isError is False
+        payload = result.structuredContent
+        monitors = payload["monitors"]
+        assert len(monitors) == 2
+        for monitor in monitors:
+            assert set(monitor) == {"name", "layout_bounds", "physical_size", "scale", "pixel_ratio"}
+            assert set(monitor["layout_bounds"]) == {"x", "y", "width", "height"}
+            assert set(monitor["physical_size"]) == {"width", "height"}
+            assert set(monitor["pixel_ratio"]) == {"x", "y"}
+
+    asyncio.run(run_test())
+
+
+def test_list_windows_respects_limit_and_rejects_invalid(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        limited = await server.mcp.call_tool("wisp_hand.desktop.list_windows", {"limit": 1})
+        assert limited.isError is False
+        payload = limited.structuredContent
+        assert isinstance(payload["windows"], list)
+        assert len(payload["windows"]) == 1
+        assert set(payload["windows"][0]) == {"address", "class", "title", "workspace", "monitor", "at", "size"}
+
+        invalid = await server.mcp.call_tool("wisp_hand.desktop.list_windows", {"limit": 0})
+        assert invalid.isError is True
+        assert invalid.structuredContent["code"] == "invalid_parameters"
+
+    asyncio.run(run_test())
+
+
+def test_observe_primitives_reject_without_hyprland_environment(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner, env={})
+    server = WispHandServer(runtime)
+
+    async def run_test() -> None:
+        for tool_name, args in [
+            ("wisp_hand.desktop.get_active_window", {}),
+            ("wisp_hand.desktop.get_monitors", {}),
+            ("wisp_hand.desktop.list_windows", {"limit": 1}),
+        ]:
+            result = await server.mcp.call_tool(tool_name, args)
+            assert result.isError is True
+            assert result.structuredContent["code"] == "unsupported_environment"
+
+    asyncio.run(run_test())
+
+
+def test_capture_scope_creates_artifact_and_metadata(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+    opened = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 10, "y": 20, "width": 100, "height": 80},
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool(
+            "wisp_hand.capture.screen",
+            {
+                "session_id": opened["session_id"],
+                "target": "scope",
+                "inline": True,
+                "downscale": 0.5,
+            },
+        )
+        assert result.isError is False
+        payload = result.structuredContent
+        assert payload["width"] == 50
+        assert payload["height"] == 40
+        assert payload["source_bounds"] == {"x": 10, "y": 20, "width": 100, "height": 80}
+        assert payload["inline_base64"]
+        assert payload["image_uri"].startswith("wisp-hand://captures/")
+        assert payload["metadata_uri"].startswith("wisp-hand://captures/")
+
+        store = CaptureArtifactStore(base_dir=runtime.config.paths.capture_dir)
+        image_path = store.resolve_image_path(payload["capture_id"])
+        assert image_path.exists()
+
+        metadata = store.load_metadata(payload["capture_id"])
+        assert metadata["capture_id"] == payload["capture_id"]
+        assert metadata["scope"]["type"] == "region"
+        assert metadata["source_bounds"]["width"] == 100
+
+        png_contents = await server.mcp.read_resource(payload["image_uri"])
+        assert png_contents[0].mime_type == "image/png"
+        assert isinstance(png_contents[0].content, (bytes, bytearray))
+        assert bytes(png_contents[0].content).startswith(b"\x89PNG\r\n\x1a\n")
+
+        meta_contents = await server.mcp.read_resource(payload["metadata_uri"])
+        assert meta_contents[0].mime_type == "application/json"
+        meta_raw = meta_contents[0].content
+        meta_text = meta_raw if isinstance(meta_raw, str) else bytes(meta_raw).decode("utf-8")
+        meta_payload = json.loads(meta_text)
+        assert meta_payload["capture_id"] == payload["capture_id"]
+        assert "path" not in meta_payload
+        assert "inline_base64" not in meta_payload
+
+    asyncio.run(run_test())
+
+
+def test_capture_supports_desktop_monitor_and_window_targets(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+
+    desktop_session = runtime.open_session(
+        scope_type="desktop",
+        scope_target=None,
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+    monitor_session = runtime.open_session(
+        scope_type="monitor",
+        scope_target="DP-1",
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+    window_session = runtime.open_session(
+        scope_type="window",
+        scope_target="0xdef",
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    desktop_capture = runtime.capture_screen(session_id=desktop_session["session_id"], target="desktop")
+    monitor_capture = runtime.capture_screen(session_id=monitor_session["session_id"], target="monitor")
+    window_capture = runtime.capture_screen(session_id=window_session["session_id"], target="window")
+
+    assert desktop_capture["width"] == 3200
+    assert desktop_capture["height"] == 1080
+    assert monitor_capture["width"] == 1280
+    assert monitor_capture["height"] == 1080
+    assert window_capture["width"] == 1000
+    assert window_capture["height"] == 800
+
+
+def test_capture_resources_raise_clear_errors_when_missing(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(tmp_path, runner)
+    server = WispHandServer(runtime)
+    opened = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 10, "y": 20, "width": 100, "height": 80},
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    async def run_test() -> None:
+        capture = await server.mcp.call_tool(
+            "wisp_hand.capture.screen",
+            {"session_id": opened["session_id"], "target": "scope"},
+        )
+        assert capture.isError is False
+        capture_id = capture.structuredContent["capture_id"]
+        image_uri = capture.structuredContent["image_uri"]
+        metadata_uri = capture.structuredContent["metadata_uri"]
+
+        capture_dir = runtime.config.paths.capture_dir
+        (capture_dir / f"{capture_id}.png").unlink()
+        (capture_dir / f"{capture_id}.json").unlink()
+
+        with pytest.raises((ResourceError, ValueError)) as image_exc:
+            await server.mcp.read_resource(image_uri)
+        assert "capability_unavailable" in str(image_exc.value)
+
+        with pytest.raises((ResourceError, ValueError)) as meta_exc:
+            await server.mcp.read_resource(metadata_uri)
+        assert "capability_unavailable" in str(meta_exc.value)
+
+    asyncio.run(run_test())
+
+
+def test_capture_dependency_missing_is_structured_error(tmp_path: Path) -> None:
+    runner = FakeObserveRunner()
+    runtime = runtime_with_config(
+        tmp_path,
+        runner,
+        binary_resolver=lambda name: None if name == "grim" else f"/usr/bin/{name}",
+    )
+    server = WispHandServer(runtime)
+    opened = runtime.open_session(
+        scope_type="region",
+        scope_target={"x": 0, "y": 0, "width": 10, "height": 10},
+        armed=None,
+        dry_run=None,
+        ttl_seconds=30,
+    )
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool(
+            "wisp_hand.capture.screen",
+            {"session_id": opened["session_id"], "target": "scope"},
+        )
+        assert result.isError is True
+        assert result.structuredContent["code"] == "dependency_missing"
+
+    asyncio.run(run_test())

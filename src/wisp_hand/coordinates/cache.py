@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from wisp_hand.coordinates.models import CoordinateMap
-from wisp_hand.errors import WispHandError
+from wisp_hand.shared.errors import WispHandError
 
 
 class CoordinateMapCache:

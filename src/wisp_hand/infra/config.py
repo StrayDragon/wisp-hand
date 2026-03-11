@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+import os
+import tomllib
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from wisp_hand.shared.errors import ConfigError
+
+DEFAULT_CONFIG_PATH = Path("~/.config/wisp-hand/config.toml").expanduser()
+DEFAULT_STATE_DIR = Path("~/.local/state/wisp-hand").expanduser()
+
+
+class ServerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
+    host: str = "127.0.0.1"
+    port: int = 8000
+
+
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+LogFormat = Literal["json", "rich", "plain"]
+
+
+class LoggingConsoleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    format: LogFormat = "rich"
+
+
+class LoggingFileConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    format: LogFormat = "json"
+
+
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    level: LogLevel = "INFO"
+    console: LoggingConsoleConfig = Field(default_factory=LoggingConsoleConfig)
+    file: LoggingFileConfig = Field(default_factory=LoggingFileConfig)
+    allow_sensitive: bool = False
+
+
+class PathsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    state_dir: Path = DEFAULT_STATE_DIR
+    audit_file: Path | None = DEFAULT_STATE_DIR / "audit.jsonl"
+    runtime_log_file: Path | None = DEFAULT_STATE_DIR / "runtime.jsonl"
+    capture_dir: Path = DEFAULT_STATE_DIR / "captures"
+
+
+class SessionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_ttl_seconds: int = 900
+    max_ttl_seconds: int = 3600
+
+
+class SafetyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_armed: bool = False
+    default_dry_run: bool = False
+    max_actions_per_window: int = 16
+    rate_limit_window_seconds: float = 1.0
+    dangerous_shortcuts: list[str] = Field(
+        default_factory=lambda: [
+            "ctrl+alt+backspace",
+            "ctrl+alt+delete",
+            "super+l",
+        ]
+    )
+
+
+class VisionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["disabled", "assist"] = "disabled"
+    model: str | None = None
+    base_url: str = "http://127.0.0.1:11434"
+    timeout_seconds: float = 30.0
+    max_image_edge: int = Field(default=1536, gt=0)
+    max_tokens: int = Field(default=256, gt=0)
+    max_concurrency: int = Field(default=1, gt=0)
+
+
+CoordinateMode = Literal["auto", "hyprctl-infer", "grim-probe", "active-pointer-probe"]
+
+
+class CoordinatesProbeRegionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: int
+    y: int
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+
+class CoordinatesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: CoordinateMode = "auto"
+    cache_enabled: bool = True
+    probe_region_size: int = Field(default=120, gt=0)
+    min_confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+
+    # Diagnostic-only. Active probing moves the pointer and requires explicit opt-in.
+    active_probe_enabled: bool = False
+    active_probe_region: CoordinatesProbeRegionConfig | None = None
+    active_probe_tolerance_px: int = Field(default=2, ge=0)
+    active_probe_move_delay_ms: int = Field(default=50, ge=0)
+
+
+class DependencyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    required_binaries: list[str] = Field(default_factory=lambda: ["hyprctl", "grim", "slurp"])
+    optional_binaries: list[str] = Field(default_factory=lambda: ["wtype"])
+
+
+class CaptureRetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # If set, captures older than max_age_seconds are deleted.
+    max_age_seconds: int | None = Field(default=7 * 24 * 60 * 60, gt=0)
+
+    # If set, keeps deleting the oldest captures until total bytes <= max_total_bytes.
+    max_total_bytes: int | None = Field(default=256 * 1024 * 1024, gt=0)
+
+
+class LogRetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    backup_count: int = Field(default=5, ge=0)
+
+
+class RetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    captures: CaptureRetentionConfig = Field(default_factory=CaptureRetentionConfig)
+    audit: LogRetentionConfig = Field(default_factory=LogRetentionConfig)
+    runtime_log: LogRetentionConfig = Field(default_factory=LogRetentionConfig)
+
+
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
+    session: SessionConfig = Field(default_factory=SessionConfig)
+    safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    vision: VisionConfig = Field(default_factory=VisionConfig)
+    coordinates: CoordinatesConfig = Field(default_factory=CoordinatesConfig)
+    dependencies: DependencyConfig = Field(default_factory=DependencyConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    config_path: Path = DEFAULT_CONFIG_PATH
+
+
+def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
+    path = _resolve_config_path(config_path)
+    raw_config = _read_config_file(path)
+    capture_dir_explicit = bool(
+        isinstance(raw_config.get("paths"), dict) and "capture_dir" in raw_config["paths"]
+    )
+
+    try:
+        config = RuntimeConfig.model_validate({**raw_config, "config_path": path})
+    except ValidationError as exc:
+        raise ConfigError(
+            "Runtime configuration is invalid",
+            {"path": str(path), "errors": exc.errors(include_url=False)},
+        ) from exc
+
+    resolved = _resolve_paths(config, base_dir=path.parent, capture_dir_explicit=capture_dir_explicit)
+    _ensure_runtime_directories(resolved)
+    return resolved
+
+
+def _resolve_config_path(config_path: Path | None) -> Path:
+    if config_path is not None:
+        return config_path.expanduser().resolve()
+
+    env_path = os.environ.get("WISP_HAND_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+
+    return DEFAULT_CONFIG_PATH.resolve()
+
+
+def _read_config_file(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+
+    try:
+        with path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(
+            "Runtime configuration could not be parsed",
+            {"path": str(path), "reason": str(exc)},
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise ConfigError("Runtime configuration root must be a TOML table", {"path": str(path)})
+
+    return data
+
+
+def _resolve_paths(
+    config: RuntimeConfig,
+    *,
+    base_dir: Path,
+    capture_dir_explicit: bool,
+) -> RuntimeConfig:
+    resolved_state_dir = _make_path_absolute(config.paths.state_dir, base_dir)
+    paths = config.paths.model_copy(
+        update={
+            "state_dir": resolved_state_dir,
+            "audit_file": _make_optional_path_absolute(config.paths.audit_file, base_dir),
+            "runtime_log_file": _make_optional_path_absolute(config.paths.runtime_log_file, base_dir),
+            "capture_dir": (
+                _make_path_absolute(config.paths.capture_dir, base_dir)
+                if capture_dir_explicit
+                else resolved_state_dir / "captures"
+            ),
+        }
+    )
+    return config.model_copy(update={"paths": paths, "config_path": config.config_path.resolve()})
+
+
+def _make_path_absolute(path: Path, base_dir: Path) -> Path:
+    expanded = path.expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return (base_dir / expanded).resolve()
+
+
+def _make_optional_path_absolute(path: Path | None, base_dir: Path) -> Path | None:
+    if path is None:
+        return None
+    return _make_path_absolute(path, base_dir)
+
+
+def _ensure_runtime_directories(config: RuntimeConfig) -> None:
+    config.paths.state_dir.mkdir(parents=True, exist_ok=True)
+    config.paths.capture_dir.mkdir(parents=True, exist_ok=True)
+    for path in (config.paths.audit_file, config.paths.runtime_log_file):
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
