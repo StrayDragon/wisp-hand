@@ -2,9 +2,9 @@ name: Publish to PyPI
 
 on:
   workflow_dispatch:
-  # push:
-  #   tags:
-  #     - "v*"
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -35,4 +35,3 @@ jobs:
 
       - name: Publish to PyPI (Trusted Publisher)
         run: uv publish
-
