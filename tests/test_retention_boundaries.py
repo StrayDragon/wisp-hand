@@ -25,7 +25,6 @@ def write_capture_pair(store: CaptureArtifactStore, *, created_at: datetime) -> 
         metadata_path=metadata_path,
         payload={
             "capture_id": capture_id,
-            "path": str(image_path),
             "created_at": created_at.isoformat(),
         },
     )
@@ -105,4 +104,3 @@ optional_binaries = []
     with pytest.raises(WispHandError) as exc:
         runtime2.wait(session_id=session["session_id"], duration_ms=0)
     assert exc.value.code == "session_not_found"
-

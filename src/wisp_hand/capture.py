@@ -34,7 +34,10 @@ class CaptureArtifactStore:
         return capture_id, image_path, metadata_path
 
     def write_metadata(self, *, metadata_path: Path, payload: dict[str, Any]) -> None:
-        metadata_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True), encoding="utf-8")
+        metadata_path.write_text(
+            json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True),
+            encoding="utf-8",
+        )
 
     def load_metadata(self, capture_id: str) -> dict[str, Any]:
         metadata_path = self._base_dir / f"{capture_id}.json"
@@ -43,20 +46,12 @@ class CaptureArtifactStore:
         return json.loads(metadata_path.read_text(encoding="utf-8"))
 
     def resolve_image_path(self, capture_id: str, *, metadata: dict[str, Any] | None = None) -> Path:
-        payload = metadata if metadata is not None else self.load_metadata(capture_id)
-        raw_path = payload.get("path")
-        if not isinstance(raw_path, str):
-            raise WispHandError(
-                "capability_unavailable",
-                "Capture metadata is missing an image path",
-                {"capture_id": capture_id},
-            )
-        image_path = Path(raw_path)
+        image_path = self._base_dir / f"{capture_id}.png"
         if not image_path.exists():
             raise WispHandError(
                 "capability_unavailable",
                 "Capture image could not be found",
-                {"capture_id": capture_id, "path": raw_path},
+                {"capture_id": capture_id},
             )
         return image_path
 
@@ -249,7 +244,7 @@ class CaptureEngine:
             pixel_ratio_x = None
             pixel_ratio_y = None
 
-        payload = {
+        metadata_payload = {
             "capture_id": capture_id,
             "runtime_instance_id": runtime_instance_id,
             "started_at": started_at,
@@ -258,8 +253,6 @@ class CaptureEngine:
             "width": width,
             "height": height,
             "mime_type": "image/png",
-            "path": str(image_path),
-            "inline_base64": inline_base64,
             "created_at": created_at,
             "source_bounds": source_bounds,
             "source_coordinate_space": "layout_px",
@@ -269,8 +262,12 @@ class CaptureEngine:
             "mapping": mapping,
             "downscale": downscale,
         }
-        self._artifact_store.write_metadata(metadata_path=metadata_path, payload=payload)
-        return payload
+        self._artifact_store.write_metadata(metadata_path=metadata_path, payload=metadata_payload)
+
+        result_payload = dict(metadata_payload)
+        if inline_base64 is not None:
+            result_payload["inline_base64"] = inline_base64
+        return result_payload
 
     def _ensure_backend_available(self) -> None:
         if self._binary_resolver is None:

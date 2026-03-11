@@ -163,6 +163,9 @@ def test_server_registers_tools_and_returns_structured_output(tmp_path: Path) ->
             "wisp_hand.session.open",
             "wisp_hand.session.close",
             "wisp_hand.desktop.get_topology",
+            "wisp_hand.desktop.get_active_window",
+            "wisp_hand.desktop.get_monitors",
+            "wisp_hand.desktop.list_windows",
             "wisp_hand.cursor.get_position",
             "wisp_hand.capture.screen",
             "wisp_hand.wait",
@@ -191,6 +194,26 @@ def test_server_registers_tools_and_returns_structured_output(tmp_path: Path) ->
         assert payload["scope"]["type"] == "region"
         assert payload["armed"] is False
         assert payload["dry_run"] is False
+        assert result.content[0].type == "text"
+        assert result.content[0].text == "ok"
+        assert len(result.content[0].text) < 64
+
+    asyncio.run(run_test())
+
+
+def test_server_tool_content_stays_short_on_errors(tmp_path: Path) -> None:
+    config = load_test_config(tmp_path)
+    server = WispHandServer(WispHandRuntime(config=config))
+
+    async def run_test() -> None:
+        result = await server.mcp.call_tool("wisp_hand.session.close", {"session_id": "missing"})
+        payload = result.structuredContent
+        assert result.isError is True
+        assert payload["code"] == "session_not_found"
+        assert result.content[0].type == "text"
+        assert result.content[0].text == "session_not_found: Session could not be found"
+        assert "\n" not in result.content[0].text
+        assert len(result.content[0].text) < 64
 
     asyncio.run(run_test())
 

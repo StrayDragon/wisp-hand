@@ -30,11 +30,15 @@ from wisp_hand.models import (
     SessionCloseResultModel,
     SessionOpenResultModel,
     TopologyResultModel,
+    ActiveWindowResultModel,
+    MonitorsResultModel,
+    WindowsListResultModel,
     VisionDescribeResultModel,
     VisionLocateResultModel,
     WaitResultModel,
 )
 from wisp_hand.runtime import WispHandRuntime
+from wisp_hand.resources import normalize_capture_id
 
 
 class WispHandServer:
@@ -48,6 +52,7 @@ class WispHandServer:
             port=runtime.config.server.port,
         )
         self._register_tools()
+        self._register_resources()
         self._enable_task_augmented_execution()
 
     def _register_tools(self) -> None:
@@ -98,6 +103,30 @@ class WispHandServer:
             return self._call(self.runtime.get_topology, TopologyResultModel, exclude_none=True, detail=detail)
 
         @self.mcp.tool(
+            name="wisp_hand.desktop.get_active_window",
+            description="Return the active window selector + geometry fields.",
+            structured_output=True,
+        )
+        def desktop_get_active_window() -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(self.runtime.get_active_window, ActiveWindowResultModel, exclude_none=True)
+
+        @self.mcp.tool(
+            name="wisp_hand.desktop.get_monitors",
+            description="Return minimal monitors geometry + pixel ratio mapping context.",
+            structured_output=True,
+        )
+        def desktop_get_monitors() -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(self.runtime.get_monitors, MonitorsResultModel, exclude_none=True)
+
+        @self.mcp.tool(
+            name="wisp_hand.desktop.list_windows",
+            description="List windows with minimal selector + geometry fields (limit applies).",
+            structured_output=True,
+        )
+        def desktop_list_windows(limit: int = 50) -> Annotated[CallToolResult, dict[str, Any]]:
+            return self._call(self.runtime.list_windows, WindowsListResultModel, exclude_none=True, limit=limit)
+
+        @self.mcp.tool(
             name="wisp_hand.cursor.get_position",
             description="Return the cursor position in desktop and scope-relative coordinates.",
             structured_output=True,
@@ -120,6 +149,7 @@ class WispHandServer:
             return self._call(
                 self.runtime.capture_screen,
                 CaptureResultModel,
+                exclude_none=True,
                 session_id=session_id,
                 target=target,
                 inline=inline,
@@ -165,13 +195,16 @@ class WispHandServer:
             session_id: str,
             steps: list[dict[str, Any]],
             stop_on_error: bool = True,
+            return_mode: str = "summary",
         ) -> Annotated[CallToolResult, dict[str, Any]]:
             return self._call(
                 self.runtime.batch_run,
                 BatchRunResultModel,
+                exclude_none=True,
                 session_id=session_id,
                 steps=steps,
                 stop_on_error=stop_on_error,
+                return_mode=return_mode,
             )
 
         @self.mcp.tool(
@@ -200,12 +233,17 @@ class WispHandServer:
         def vision_locate(
             capture_id: str,
             target: str,
+            limit: int = 3,
+            space: str = "scope",
         ) -> Annotated[CallToolResult, dict[str, Any]]:
             return self._call(
                 self.runtime.vision_locate,
                 VisionLocateResultModel,
+                exclude_none=True,
                 capture_id=capture_id,
                 target=target,
+                limit=limit,
+                space=space,
             )
 
         @self.mcp.tool(
@@ -317,6 +355,36 @@ class WispHandServer:
                 keys=keys,
             )
 
+    def _register_resources(self) -> None:
+        @self.mcp.resource(
+            "wisp-hand://captures/{capture_id}.png",
+            mime_type="image/png",
+            title="Capture image",
+            description="Capture artifact image stored by wisp_hand.capture.screen.",
+        )
+        def capture_png(capture_id: str) -> bytes:
+            normalized = normalize_capture_id(capture_id)
+            try:
+                image_path = self.runtime._capture_store.resolve_image_path(normalized)  # pyright: ignore[reportPrivateUsage]
+            except WispHandError as exc:
+                raise ValueError(f"{exc.code}: {exc.message}") from exc
+            return image_path.read_bytes()
+
+        @self.mcp.resource(
+            "wisp-hand://captures/{capture_id}.json",
+            mime_type="application/json",
+            title="Capture metadata",
+            description="Capture artifact metadata stored by wisp_hand.capture.screen.",
+        )
+        def capture_metadata(capture_id: str) -> str:
+            normalized = normalize_capture_id(capture_id)
+            try:
+                metadata = self.runtime._capture_store.load_metadata(normalized)  # pyright: ignore[reportPrivateUsage]
+            except WispHandError as exc:
+                raise ValueError(f"{exc.code}: {exc.message}") from exc
+            # Ensure stable, compact JSON for token-efficient reads.
+            return json.dumps(metadata, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
     def _enable_task_augmented_execution(self) -> None:
         # FastMCP doesn't expose tasks yet. We enable tasks on the underlying lowlevel server
         # and override list_tools/tools/call to provide taskSupport + task-augmented execution.
@@ -376,7 +444,7 @@ class WispHandServer:
         # or raw content blocks (unstructured). Normalize for tasks store.
         if isinstance(result, dict):
             return CallToolResult(
-                content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=True, indent=2, sort_keys=True))],
+                content=[TextContent(type="text", text="ok")],
                 structuredContent=result,
                 isError=False,
             )
@@ -429,6 +497,25 @@ class WispHandServer:
                     exclude_none=True,
                     detail=arguments.get("detail", "summary"),
                 )
+            case "wisp_hand.desktop.get_active_window":
+                return self._call(
+                    self.runtime.get_active_window,
+                    ActiveWindowResultModel,
+                    exclude_none=True,
+                )
+            case "wisp_hand.desktop.get_monitors":
+                return self._call(
+                    self.runtime.get_monitors,
+                    MonitorsResultModel,
+                    exclude_none=True,
+                )
+            case "wisp_hand.desktop.list_windows":
+                return self._call(
+                    self.runtime.list_windows,
+                    WindowsListResultModel,
+                    exclude_none=True,
+                    limit=arguments.get("limit", 50),
+                )
             case "wisp_hand.cursor.get_position":
                 return self._call(
                     self.runtime.get_cursor_position,
@@ -463,9 +550,11 @@ class WispHandServer:
                 return self._call(
                     self.runtime.batch_run,
                     BatchRunResultModel,
+                    exclude_none=True,
                     session_id=arguments["session_id"],
                     steps=arguments["steps"],
                     stop_on_error=bool(arguments.get("stop_on_error", True)),
+                    return_mode=arguments.get("return_mode", "summary"),
                 )
             case "wisp_hand.vision.describe":
                 return self._call(
@@ -479,8 +568,11 @@ class WispHandServer:
                 return self._call(
                     self.runtime.vision_locate,
                     VisionLocateResultModel,
+                    exclude_none=True,
                     capture_id=arguments["capture_id"],
                     target=arguments["target"],
+                    limit=arguments.get("limit", 3),
+                    space=arguments.get("space", "scope"),
                 )
             case "wisp_hand.pointer.move":
                 return self._call(
@@ -535,9 +627,9 @@ class WispHandServer:
                     keys=arguments["keys"],
                 )
             case _:
-                return CallToolResult(
-                    content=[TextContent(type="text", text=f"Unknown tool: {name}")],
-                    isError=True,
+                return self._result(
+                    WispHandError("invalid_parameters", f"Unknown tool: {name}").to_payload(),
+                    is_error=True,
                 )
 
     async def _call_tool_as_task(self, experimental: Any, name: str, arguments: dict[str, Any]) -> CreateTaskResult:
@@ -556,11 +648,7 @@ class WispHandServer:
                 else:
                     normalized = await anyio.to_thread.run_sync(lambda: self._call_sync_tool_by_name(name, arguments))
             except Exception as exc:  # pragma: no cover - defensive: task path must never crash the server
-                normalized = CallToolResult(
-                    content=[TextContent(type="text", text=f"internal_error: {exc}")],
-                    structuredContent=None,
-                    isError=True,
-                )
+                normalized = self._result(internal_error(str(exc)).to_payload(), is_error=True)
 
             # Best-effort cancellation: if the task was cancelled while the work ran,
             # don't attempt to overwrite terminal state by completing.
@@ -603,19 +691,19 @@ class WispHandServer:
         session_id = arguments.get("session_id")
         duration_ms = arguments.get("duration_ms")
         if not isinstance(session_id, str) or not session_id:
-            return CallToolResult(
-                content=[TextContent(type="text", text="invalid_parameters: session_id must be a non-empty string")],
-                isError=True,
+            return self._result(
+                WispHandError("invalid_parameters", "session_id must be a non-empty string").to_payload(),
+                is_error=True,
             )
         if not isinstance(duration_ms, int):
-            return CallToolResult(
-                content=[TextContent(type="text", text="invalid_parameters: duration_ms must be an integer")],
-                isError=True,
+            return self._result(
+                WispHandError("invalid_parameters", "duration_ms must be an integer").to_payload(),
+                is_error=True,
             )
         if duration_ms < 0:
-            return CallToolResult(
-                content=[TextContent(type="text", text="invalid_parameters: duration_ms must be >= 0")],
-                isError=True,
+            return self._result(
+                WispHandError("invalid_parameters", "duration_ms must be >= 0").to_payload(),
+                is_error=True,
             )
 
         # Validate session exists (fast, should not block the server loop).
@@ -659,6 +747,7 @@ class WispHandServer:
             payload = response_model.model_validate(callback(**kwargs)).model_dump(
                 mode="json",
                 exclude_none=exclude_none,
+                by_alias=True,
             )
             return WispHandServer._result(payload)
         except WispHandError as exc:
@@ -668,13 +757,20 @@ class WispHandServer:
 
     @staticmethod
     def _result(payload: dict[str, Any], *, is_error: bool = False) -> CallToolResult:
+        if is_error:
+            code = payload.get("code", "error")
+            message = payload.get("message", "Error")
+            text = f"{code}: {message}"
+        else:
+            text = "ok"
+
+        # Keep content extremely small: hosts often feed it directly into the LLM context.
+        max_len = 60
+        if len(text) > max_len:
+            text = text[: max_len - 3] + "..."
+
         return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True),
-                )
-            ],
+            content=[TextContent(type="text", text=text)],
             structuredContent=payload,
             isError=is_error,
         )
