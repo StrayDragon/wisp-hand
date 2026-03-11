@@ -5,7 +5,7 @@
 优先执行：
 
 ```bash
-uvx wisp-hand-mcp doctor --json | jq .
+uvx wisp-hand doctor --json | jq .
 ```
 
 常见阻塞原因：
@@ -50,4 +50,3 @@ uv run python examples/attempts/diagnose_coordinates.py \
 
 - capture artifacts 受 retention 策略影响，会按时间/容量清理。
 - 如果需要更长期保存，调大 `[retention.captures]` 的限制或将 `capture_dir` 指向更大磁盘。
-
