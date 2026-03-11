@@ -19,7 +19,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 async def main():
-    server = StdioServerParameters(command="wisp-hand-mcp", args=["--config", "/path/to/config.toml"])
+    server = StdioServerParameters(command="wisp-hand", args=["mcp", "--config", "/path/to/config.toml"])
     async with stdio_client(server) as (r, w):
         async with ClientSession(r, w) as session:
             await session.initialize()
@@ -49,4 +49,3 @@ anyio.run(main)
 - `ttl`：建议至少覆盖一次工具的最坏耗时，并为排障留余量（默认客户端通常是 60s）。
 - 轮询：优先使用 `pollInterval`（服务端会给出建议值），并对网络 transport 做退避。
 - 取消：`tasks/cancel` 是 best-effort。任务进入 `cancelled` 后服务端不会再把它变回 `completed/failed`。
-

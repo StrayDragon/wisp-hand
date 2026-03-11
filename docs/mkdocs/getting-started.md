@@ -14,7 +14,7 @@
 推荐先跑一次 preflight：
 
 ```bash
-uvx wisp-hand-mcp doctor --json | jq .
+uvx wisp-hand doctor --json | jq .
 ```
 
 如果 `status=blocked`，优先看 `issues` 里的错误码与缺失依赖。
@@ -34,14 +34,14 @@ sed -n '1,200p' docs/example_config.toml
 默认是 `stdio` transport（适合被 MCP client/Inspector 以子进程方式拉起）：
 
 ```bash
-uvx wisp-hand-mcp --config ~/.config/wisp-hand/config.toml
+uvx wisp-hand mcp --config ~/.config/wisp-hand/config.toml
 ```
 
 开发/调试等价入口：
 
 ```bash
-uv run wisp-hand-mcp --config ./config.toml
-python -m wisp_hand --config ./config.toml
+uv run wisp-hand mcp --config ./config.toml
+python -m wisp_hand mcp --config ./config.toml
 ```
 
 ## 4) 用 MCP Inspector 验证
@@ -55,7 +55,7 @@ just inspector
 这会执行：
 
 ```bash
-npx --yes @modelcontextprotocol/inspector -- uv run wisp-hand-mcp --config docs/example_config.toml --transport stdio
+npx --yes @modelcontextprotocol/inspector -- uv run wisp-hand mcp --config docs/example_config.toml --transport stdio
 ```
 
 在 Inspector 中建议先依次调用：
@@ -70,4 +70,3 @@ npx --yes @modelcontextprotocol/inspector -- uv run wisp-hand-mcp --config docs/
 如果你的目标是“让 AI 看 Godot 编辑器，点击运行并用截图验证”，直接看：
 
 - [Godot 场景](scenarios/godot.md)
-

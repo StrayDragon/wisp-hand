@@ -12,7 +12,7 @@ Wisp Hand 不负责“如何操作 Godot 才正确”的规划，它只提供可
 ## 0) Preflight
 
 ```bash
-uvx wisp-hand-mcp doctor --json | jq .
+uvx wisp-hand doctor --json | jq .
 ```
 
 确保：
