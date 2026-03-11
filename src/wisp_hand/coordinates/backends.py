@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from PIL import Image
 
-from wisp_hand.command import CommandRunner
+from wisp_hand.infra.command import CommandRunner
 from wisp_hand.coordinates.fingerprint import topology_fingerprint
 from wisp_hand.coordinates.models import (
     Bounds,
@@ -18,7 +18,7 @@ from wisp_hand.coordinates.models import (
     PhysicalSize,
     PixelRatio,
 )
-from wisp_hand.errors import WispHandError
+from wisp_hand.shared.errors import WispHandError
 
 _SizeSemantics = Literal["layout", "physical"]
 

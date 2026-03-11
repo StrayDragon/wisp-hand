@@ -1,12 +1,12 @@
 ## 1. 接口与模型
 
-- [x] 1.1 更新 [src/wisp_hand/server.py](/home/l8ng/Projects/__straydragon__/wisp-hand/src/wisp_hand/server.py) 的 `wisp_hand.desktop.get_topology` 工具签名: 增加 `detail` 参数, 默认 `summary`, 并对非法值返回 `invalid_parameters`
-- [x] 1.2 更新 [src/wisp_hand/models.py](/home/l8ng/Projects/__straydragon__/wisp-hand/src/wisp_hand/models.py) 中的拓扑返回模型, 体现 `detail=summary/full/raw` 的稳定输出边界(含 `raw` 字段仅在 raw 模式返回)
+- [x] 1.1 更新 [src/wisp_hand/server.py](../../../../src/wisp_hand/server.py) 的 `wisp_hand.desktop.get_topology` 工具签名: 增加 `detail` 参数, 默认 `summary`, 并对非法值返回 `invalid_parameters`
+- [x] 1.2 更新 [src/wisp_hand/models.py](../../../../src/wisp_hand/models.py) 中的拓扑返回模型, 体现 `detail=summary/full/raw` 的稳定输出边界(含 `raw` 字段仅在 raw 模式返回)
 
 ## 2. Hyprland 查询规划
 
-- [x] 2.1 重构 [src/wisp_hand/hyprland.py](/home/l8ng/Projects/__straydragon__/wisp-hand/src/wisp_hand/hyprland.py) 的拓扑查询: 支持按 `detail` 规划子命令, `detail=summary` 时不执行 `hyprctl -j clients`
-- [x] 2.2 更新 [src/wisp_hand/runtime.py](/home/l8ng/Projects/__straydragon__/wisp-hand/src/wisp_hand/runtime.py) 的 `get_topology` 实现: 根据 `detail` 调用适配器并构建 `summary/full/raw` 三种视图输出
+- [x] 2.1 重构 [src/wisp_hand/hyprland.py](../../../../src/wisp_hand/hyprland.py) 的拓扑查询: 支持按 `detail` 规划子命令, `detail=summary` 时不执行 `hyprctl -j clients`
+- [x] 2.2 更新 [src/wisp_hand/runtime.py](../../../../src/wisp_hand/runtime.py) 的 `get_topology` 实现: 根据 `detail` 调用适配器并构建 `summary/full/raw` 三种视图输出
 
 ## 3. 拓扑裁剪与 raw 输出
 

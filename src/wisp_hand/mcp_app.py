@@ -8,7 +8,7 @@ Usage examples:
   uv run mcp run src/wisp_hand/mcp_app.py:mcp --transport stdio
 """
 
-from wisp_hand.server import create_server
+from wisp_hand.protocol.mcp_server import create_server
 
 # NOTE: mcp CLI expects a global FastMCP object named `mcp`/`server`/`app`.
 mcp = create_server().mcp

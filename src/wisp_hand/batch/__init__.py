@@ -1,0 +1,1 @@
+"""Batch domain package."""
