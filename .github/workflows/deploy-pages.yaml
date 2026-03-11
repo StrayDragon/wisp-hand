@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+  UV_INDEX_URL: https://pypi.org/simple
+
 permissions:
   contents: read
   pages: write
