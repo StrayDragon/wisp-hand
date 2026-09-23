@@ -1,0 +1,13 @@
+kind: llman.sdd.spec
+name: "mcp-token-efficient-surface"
+purpose: "定义 Wisp Hand 的 MCP tool 返回契约——以 `structuredContent` 为权威结果、`content` 默认极短、重内容通过 MCP Resources 按需读取——减少 token 消耗与重复传输。"
+valid_scope[1]: "llmanspec/specs/mcp-token-efficient-surface"
+requirements[2]{req_id,title,statement}:
+  r1,Tool 结果必须以 structuredContent 为权威且 content 默认极短,"Wisp Hand 服务对所有 `wisp_hand.*` tools 的 `tools/call` 返回 MUST 满足：`structuredContent` MUST 存在，并承载该 tool 的完整结构化结果（成功或失败）；`content` MUST 默认只包含极短文本，不得再次携带完整 JSON 结果（避免重复传输与 token 放大）。当 tool 成功时 `content` 的默认文本 MUST 为 `ok`；当 tool 失败时 `content` 的默认文本 MUST 为 `<code>: <message>` 的简短摘要，且错误细节 MUST 仅在 `structuredContent` 中返回。"
+  r2,重内容必须通过 MCP Resources 按需读取,"当 tool 结果涉及重内容时（至少包括截图 png 与截图 metadata），服务 MUST 通过 MCP Resources 暴露可读取的资源，并在 tool 结果中返回对应资源的 URI（而不是内联 base64 或本地路径）。服务 MUST 至少暴露以下 capture 资源模板：`wisp-hand://captures/{capture_id}.png` 和 `wisp-hand://captures/{capture_id}.json`。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,success-content-minimal,"客户端调用任意 `wisp_hand.*` tool 且返回成功","返回 MUST 包含 `structuredContent`，且 `content` 仅包含极短文本 `ok`","不得把结构化结果 JSON 再次写入 `content.text`",false
+  r1,failure-content-short,"客户端调用任意 `wisp_hand.*` tool 且返回失败","返回 MUST 包含错误的结构化 `structuredContent`，且 `content` 仅包含 `<code>: <message>` 的简短摘要","",false
+  r2,capture-returns-uri,"客户端以默认参数调用 `wisp_hand.capture.screen`","返回 MUST 包含 png 与 metadata 的 resource URI","MUST NOT 默认返回本地 `path` 或内联 base64 图像",false
+  r2,resource-read-png,"客户端对 `wisp-hand://captures/{capture_id}.png` 执行 `resources/read`","服务返回对应 png 的二进制内容（或等价 blob 资源内容）","该内容与 capture artifact store 中的图片一致",false
+  r2,missing-resource-error,"客户端对不存在或已被 retention 清理的 `capture_id` 执行 `resources/read`","服务 MUST 返回结构化错误（例如 `capability_unavailable`）","不返回空内容或崩溃",false

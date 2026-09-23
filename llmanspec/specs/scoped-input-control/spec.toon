@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "scoped-input-control"
+purpose: "定义 session scope 内 pointer / keyboard 输入工具面、坐标映射与统一 session 解析契约，确保上层 agent 通过 MCP 稳定驱动桌面。"
+valid_scope[1]: "llmanspec/specs/scoped-input-control"
+requirements[3]{req_id,title,statement}:
+  r1,Pointer 输入必须在 session scope 内执行,"Wisp Hand 服务 MUST 通过 `wisp_hand.pointer.move`、`wisp_hand.pointer.click`、`wisp_hand.pointer.drag` 与 `wisp_hand.pointer.scroll` 在 session scope 内执行 pointer 动作，并在 dispatch 前把 scope-relative 坐标转换为桌面绝对坐标。"
+  r2,Keyboard 输入必须通过统一 tool surface 暴露,"Wisp Hand 服务 MUST 通过 `wisp_hand.keyboard.type` 与 `wisp_hand.keyboard.press` 暴露文本输入、单键与组合键能力，并让所有 keyboard 动作绑定到同一 session 安全状态与审计链路。"
+  r3,所有输入动作都必须走统一的 session 校验路径,"任意 pointer 或 keyboard 工具 MUST 先解析 `session_id`、读取标准化 scope envelope 与当前安全状态，再决定是否允许执行。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,click-in-scope,"客户端使用已 armed 的有效 session 调用 `wisp_hand.pointer.click` 且目标坐标位于 scope 内","服务执行点击并返回成功结果与相关审计上下文","",false
+  r1,out-of-bounds-rejected,"客户端调用任意 pointer 工具且目标坐标超出 session scope","服务 MUST 返回 `scope_violation`","",false
+  r2,type-success,"客户端使用已 armed 的有效 session 调用 `wisp_hand.keyboard.type`","服务执行文本输入并返回成功结果","",false
+  r2,press-success,"客户端使用已 armed 的有效 session 调用 `wisp_hand.keyboard.press` 并提供组合键序列","服务执行组合键并记录按键参数与执行结果","",false
+  r3,missing-session-rejected,"客户端对不存在或已过期的 session 调用任意输入工具","服务 MUST 返回 `session_not_found` 或 `session_expired`","",false

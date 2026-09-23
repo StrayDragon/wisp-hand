@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "runtime-operations-hardening"
+purpose: "定义 runtime 的运维硬化与长期运行治理要求，包括运行实例标识、capture artifacts 留存清理、审计与运行日志有界滚动等，保证外部接入下可诊断、可治理、可持续写入。"
+valid_scope[1]: "llmanspec/specs/runtime-operations-hardening"
+requirements[3]{req_id,title,statement}:
+  r1,运行实例标识必须贯穿运维工件与重启诊断,"Wisp Hand MUST 为每次 runtime 启动生成唯一的 `runtime_instance_id`，并把该标识写入关键运维工件与相关返回上下文，包括 session 创建结果、audit 记录、capture metadata，以及与实例失配有关的结构化错误。"
+  r2,capture artifact 必须受显式 retention 治理,"Wisp Hand MUST 对 capture artifact 执行显式 retention 策略，并在启动时与新 capture 写入后执行清理。清理过程 MUST 保证图片文件与 metadata 成对存在或成对删除，不得暴露半写入或半删除状态。"
+  r3,audit 与 runtime log 必须在长期运行中保持有界,"Wisp Hand MUST 对 audit 日志与 runtime log 执行有界 retention，使活动日志文件在长期运行和重复调用下仍然可写，并且旧日志按照配置被滚动或清理。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,same-instance-id,"客户端在同一个运行中的 Wisp Hand 实例上依次打开 session、执行 capture 并查看对应 audit 记录","这些结果中的 `runtime_instance_id` MUST 一致","以便外部接入方做关联排障",false
+  r1,restart-invalidates-session,"客户端在 runtime 重启后继续使用上一个实例创建的 `session_id`","服务 MUST 返回结构化错误","在错误上下文中包含当前 `runtime_instance_id`",false
+  r2,retention-cleanup,"capture artifact 总体积或保留时长超过配置的 retention 预算","服务 MUST 清理最旧且超出预算的 capture","直到 store 回到配置范围内",false
+  r2,missing-capture-error,"客户端继续引用一个已被 retention 清理的 `capture_id`","服务 MUST 返回结构化缺失工件错误","不崩溃、挂起或读取到不完整文件",false
+  r3,log-rotation,"audit 日志或 runtime log 达到配置的保留上限","服务 MUST 对旧日志执行滚动或清理","继续把新记录写入活动日志文件",false

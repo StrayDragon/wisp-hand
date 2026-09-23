@@ -1,0 +1,16 @@
+kind: llman.sdd.spec
+name: "ollama-vision-assist"
+purpose: "定义本地 Ollama 视觉辅助契约，为外部 agent / client 提供显式 describe / locate 能力，而不把视觉推理嵌入隐式执行链路。"
+valid_scope[1]: "llmanspec/specs/ollama-vision-assist"
+requirements[4]{req_id,title,statement}:
+  r1,Vision 工具必须可以显式启用或关闭,"Wisp Hand 服务 MUST 支持 `disabled` 与 `assist` 两种 vision 运行模式；当 vision 未启用或 provider 不可用时，所有视觉工具都必须明确返回 `capability_unavailable`。"
+  r2,服务必须支持图像描述能力,"Wisp Hand 服务 MUST 通过 `wisp_hand.vision.describe` 支持基于 `capture_id` 或 `inline_image` 的图像描述，并返回 `model`、`answer` 与 `latency_ms`。"
+  r3,服务必须支持目标定位能力,"Wisp Hand 服务 MUST 通过 `wisp_hand.vision.locate` 基于 `capture_id` 与文本目标返回候选区域列表，每个候选至少包含 `x`、`y`、`width`、`height`、`confidence` 与 `reason`。"
+  r4,Vision 链路必须受配置与审计约束,"视觉调用 MUST 受模型名、`base_url`、请求超时、最大图像尺寸、最大 token 与并发限制约束，并把输入来源、模型与延迟写入审计记录。"
+scenarios[6]{req_id,id,given,when,then,feature}:
+  r1,disabled-rejected,"客户端在 `vision.mode=disabled` 时调用任意视觉工具","服务 MUST 返回 `capability_unavailable`","",false
+  r1,provider-unavailable,"客户端启用了 vision，但 Ollama provider 不可达或配置不完整","服务 MUST 返回 `capability_unavailable`","附带不可用原因",false
+  r2,describe-capture,"客户端提供有效 `capture_id` 调用 `wisp_hand.vision.describe`","服务读取对应 capture，调用 Ollama","返回 `model`、`answer` 与 `latency_ms`",false
+  r2,describe-inline,"客户端提供 `inline_image` 调用 `wisp_hand.vision.describe`","服务使用内联图像作为输入完成描述","不要求先存在 capture artifact",false
+  r3,locate-candidates,"客户端对有效 `capture_id` 调用 `wisp_hand.vision.locate` 并提供文本目标","服务返回一个或多个候选区域","每个候选都包含位置、尺寸、置信度与解释原因",false
+  r4,oversized-image-downscaled,"输入图像超过配置的最大边长","服务先按配置下采样","再调用 Ollama provider",false

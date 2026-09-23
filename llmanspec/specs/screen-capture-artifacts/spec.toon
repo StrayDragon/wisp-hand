@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "screen-capture-artifacts"
+purpose: "定义多目标截图、artifact store 与 capture 元数据契约，为输入、diff 与视觉能力提供可复用图像来源。"
+valid_scope[1]: "llmanspec/specs/screen-capture-artifacts"
+requirements[3]{req_id,title,statement}:
+  r1,服务必须支持多目标截图,"Wisp Hand 服务 MUST 通过 `wisp_hand.capture.screen` 支持 `desktop`、`monitor`、`window`、`region` 与 `scope` 五类截图目标，并为每次截图生成唯一的 `capture_id`。"
+  r2,截图结果必须进入 artifact store 并附带标准元数据,"每次截图 MUST 写入 capture artifact store，并返回至少包含 `capture_id`、`scope`、`width`、`height`、`mime_type`、`path` 或 `inline_base64`、`created_at` 的标准元数据。"
+  r3,截图元数据必须保留坐标映射上下文,"capture 元数据 MUST 保留目标类型、原始几何边界与 downscale 上下文，以便后续 input、diff 与 vision 链路把图像坐标映射回桌面或 scope 坐标。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,capture-scope,"客户端以 `target=scope` 调用 `wisp_hand.capture.screen`","服务返回对应 scope 的截图结果","不回退为全桌面截图",false
+  r1,capture-window,"客户端以 `target=window` 调用 `wisp_hand.capture.screen` 且目标窗口存在","服务返回目标窗口边界内的截图结果","",false
+  r1,missing-dependency,"客户端调用 `wisp_hand.capture.screen` 且截图后端依赖缺失","服务 MUST 返回 `dependency_missing`","",false
+  r2,default-file-ref,"客户端以 `inline=false` 调用 `wisp_hand.capture.screen`","服务返回 `capture_id` 与可访问的 artifact `path`","",false
+  r2,explicit-inline,"客户端以 `inline=true` 调用 `wisp_hand.capture.screen`","服务返回 `inline_base64`","同时仍保留可审计的 `capture_id` 与截图元数据",false

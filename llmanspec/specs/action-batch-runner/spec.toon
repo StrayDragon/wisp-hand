@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "action-batch-runner"
+purpose: "定义在单个 session 内顺序编排既有 MCP 动作的批处理契约，确保上层 agent / client 可以用更低往返完成确定性执行。"
+valid_scope[1]: "llmanspec/specs/action-batch-runner"
+requirements[3]{req_id,title,statement}:
+  r1,批处理必须在单一 session 与 scope 中顺序执行,"Wisp Hand 服务 MUST 通过 `wisp_hand.batch.run` 在单一 `session_id` 下顺序执行一组步骤，并保证所有步骤共享同一 session scope 与安全状态。"
+  r2,批处理必须支持 fail-fast 与逐步结果,"`wisp_hand.batch.run` MUST 支持 `stop_on_error`，并在返回结果中包含每一步的执行状态、输出或错误信息。"
+  r3,Batch 步骤类型必须受现有工具面约束,"`wisp_hand.batch.run` 的步骤类型 MUST 只允许复用已定义的 `move`、`click`、`drag`、`scroll`、`type`、`press`、`wait` 与 `capture` 动作，而不是引入绕过现有校验的隐藏步骤。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,three-step-success,"客户端提交包含 `move`、`click`、`capture` 三个步骤的 batch","服务按提交顺序执行三步","返回逐步结果列表",false
+  r1,session-inheritance,"客户端提交 batch 且未为单个步骤单独指定 session","服务 MUST 使用 batch 级 `session_id` 解析所有步骤","不允许步骤绕过当前 session scope",false
+  r2,fail-fast-stop,"客户端提交 `stop_on_error=true` 的 batch，且第二步执行失败","服务停止执行后续步骤","在结果中明确标记失败步骤与未执行步骤",false
+  r2,no-fail-fast-continue,"客户端提交 `stop_on_error=false` 的 batch，且某一步失败","服务继续执行后续步骤","在结果中分别标记每一步的成功或失败状态",false
+  r3,illegal-step-rejected,"客户端在 batch 中提交未被支持的步骤类型","服务 MUST 返回结构化参数错误并拒绝该 batch","",false

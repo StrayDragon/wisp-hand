@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "input-safety-guardrails"
+purpose: "定义输入链路的 armed、dry-run、策略拒绝与审计护栏，确保 MCP 副作用能力默认安全且可追踪。"
+valid_scope[1]: "llmanspec/specs/input-safety-guardrails"
+requirements[3]{req_id,title,statement}:
+  r1,未 armed 的 session 不得产生副作用,"所有 pointer 与 keyboard 输入 MUST 仅在 `armed=true` 时允许执行；未 armed 的 session 只能调用 observe 类工具，不能产生任何副作用。"
+  r2,Dry-run 必须保留验证语义但不产生副作用,"当 session 处于 `dry_run=true` 时，输入链路 MUST 完整走过参数校验、scope 检查、策略检查与审计记录，但不得向桌面实际发送输入事件。"
+  r3,输入链路必须受策略护栏控制,"输入链路 MUST 支持 emergency stop 锁存、最大动作频率限制与危险动作拒绝，并在触发时返回结构化策略错误。"
+scenarios[5]{req_id,id,given,when,then,feature}:
+  r1,unarmed-rejected,"客户端使用 `armed=false` 的 session 调用任意输入工具","服务 MUST 返回 `session_not_armed`","",false
+  r2,dry-run-no-side-effect,"客户端使用 `dry_run=true` 的 session 调用任意输入工具","服务返回可预期的模拟结果并记录审计","桌面状态不发生改变",false
+  r3,emergency-stop-blocks,"emergency stop 已被触发后客户端继续调用任意输入工具","服务 MUST 返回 `policy_denied` 并拒绝新的 input dispatch","",false
+  r3,rate-limit-blocks,"客户端在单位时间内连续发送超过配置阈值的输入动作","服务 MUST 返回 `policy_denied` 并指出触发了频率限制","",false
+  r3,dangerous-shortcut-blocked,"客户端调用 `wisp_hand.keyboard.press` 且请求的按键组合被策略列为危险动作","服务 MUST 返回 `policy_denied`","",false

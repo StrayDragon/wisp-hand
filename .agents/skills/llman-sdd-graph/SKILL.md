@@ -1,0 +1,163 @@
+---
+name: "llman-sdd-graph"
+description: "以 mermaid 图可视化 llman SDD 变更间的依赖关系（depends_on/blocks）。辅助工具，任意阶段可用，不属于主实现 pipeline。"
+metadata:
+  version: "0.0.65"
+  llman_sdd:
+    bdd_mode: "off"
+    skill_set: "default"
+---
+
+# LLMAN SDD 依赖图
+
+使用此 skill 可视化变更之间的依赖关系。
+
+## Pipeline 位置
+
+```mermaid
+flowchart LR
+    pipeline["主 pipeline:<br/>propose → apply → verify → archive"]
+    graph["📎 llman-sdd-graph<br/>依赖可视化（辅助工具）"]
+    graph -.->|任意阶段可用| pipeline
+
+    style graph fill:#e8f4e8,stroke:#28a745,stroke-width:2px
+```
+
+> 📎 辅助工具，可在 pipeline 任意阶段使用。需要落地执行时 → `llman-sdd-apply`（实施）或 `llman-sdd-propose`（提案）。
+
+## 用法
+
+**聚焦视图（seed 模式）：** 展示指定变更及其关系邻域。
+
+```bash
+llman sdd graph <change-id>              # 该变更 + 直接关系（depth 1）
+llman sdd graph <change-id> --depth 3    # 递归 3 层
+llman sdd graph <change-id> --depth 0    # 仅该变更自身
+```
+
+seed 模式沿 upstream（depends_on）、downstream（被谁依赖）、blocks 三个方向遍历，自动发现活跃和已归档变更。
+
+**全局视图（scope 模式）：** 按范围展示所有变更。
+
+```bash
+llman sdd graph                          # 所有活跃变更（默认）
+llman sdd graph --scope archived         # 所有已归档（已完成）变更
+llman sdd graph --scope all              # 全部
+```
+
+## 输出
+
+- 输出为 mermaid flowchart 到标准输出，可管道到文件或渲染器：
+  ```
+  llman sdd graph c50 > deps.mmd
+  llman sdd graph c50 --depth 2 | mmdc -i - -o deps.png
+  ```
+- 已归档（已完成）变更以 "✓ done" 后缀和绿色高亮显示。
+- 当图中存在互不相连的分组时，每组渲染为独立的 subgraph，标注 "Active"、"Done" 或 "Mixed"。
+
+## 提案 frontmatter 格式
+
+```yaml
+---
+depends_on:
+  - other-change-id
+blocks:
+  - blocked-change-id
+---
+
+## Why
+...
+```
+
+> 💡 这只是辅助工具 — 需要落地执行时回到主 pipeline：`llman-sdd-propose` → `llman-sdd-apply` → `llman-sdd-verify` → `llman-sdd-archive`。
+
+行动前先阅读 `llmanspec/config.yaml`，并遵循其中的 `context` 与 `rules`（若有）。
+
+常用命令：
+- `llman sdd context --task "<描述>" --paths "<文件>"`（找相关 specs）。使用 pageindex agentic tree 后端（需 `LLMAN_SDD_INDEX_CHAT_MODEL`）。可用 `LLMAN_SDD_INDEX_BACKEND` 预设。
+- `llman sdd list`（列出变更）
+- `llman sdd list --specs`（列出 specs 及 purpose/scope 元数据）
+- `llman sdd show <id>`（展示 change/spec）
+- `llman sdd validate <id>`（校验 change 或 spec）
+- `llman sdd validate --all`（批量校验）
+- `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
+- `llman sdd index check`（检查索引新鲜度）
+- `llman sdd change new <id>`（创建草稿 `changes/<id>/proposal.md`）
+- `llman sdd change start <id> [--worktree]`（Designed→Full：干净树 → 创建 `sdd/<id>` 分支 + attach 绑定）
+- `llman sdd change attach <id> [--force]`（绑定已有 feature 分支 + base SHA）
+- `llman sdd change finalize <id> [--no-check]`（**推荐单 commit 路径**——不要求干净树；门禁 + 自动 ff-merge + 文档改名）
+- `llman sdd change checkpoint <id> [--no-check]`（干净工作区 + 归档前门禁；严格 sha = HEAD）
+- `llman sdd change diff <id> [--export-patch <path>]`（只读 `base...HEAD` 审查/导出）
+- `llman sdd change archive <id>`（封存变更：自动 ff-merge 到默认分支，再将文档改名到 `changes/archive/`；单 commit 收尾优先用 `finalize`）
+- `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
+- `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
+- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
+- `llman sdd project migrate [--kind format|partitioned|legacy-bdd|auto]`（一次性迁移）
+
+常见校验修复（TOON 独立文件 spec）：
+
+1) 缺少校验作用域（`Spec valid_scope must not be empty`）：
+Main spec 必须在 `.toon` 文档内携带非空的 `valid_scope`。
+`llmanspec/specs/<feature-id>/spec.toon`：
+```toon
+kind: llman.sdd.spec
+name: sample
+purpose: "One-line overview."
+valid_scope[1]: src
+requirements[1]{req_id,title,statement}:
+  r1,Title,System MUST do something.
+scenarios[1]{req_id,id,given,when,then}:
+  r1,happy,"",a trigger happens,the outcome is observed
+```
+
+2) 表格化行引号错误（"Expected N tabular row values, but got M"）：
+值包含**空格**、逗号、冒号或方括号时，必须用双引号包裹。
+```toon
+# 错误：未加引号的空格值会被拆成多个值
+r1,happy,"",a trigger happens,the outcome is observed
+
+# 正确：多词值加引号
+r1,happy,"","a trigger happens","the outcome is observed"
+```
+
+3) Git-native 护栏（配置了 `bdd:` 时采用 Partitioned SSOT）：
+`spec.toon`=约束/不可执行场景；`*.feature`=可执行 GWT（`@req`）。在非默认分支编辑 live 文件 → `change start` 或 `change attach` → 优先 `change finalize`（单 commit）或 fallback `checkpoint` → ff-merge + 文档改名 via `change archive`。勿使用 `change delta` / solidify / `*.feature.delta.toon`。配置了 `bdd:` 且空 requirements 又无 `.feature` = ERROR。
+
+备注：
+- 每个 spec 是一个独立的 `.toon` 文件；没有 Markdown 外壳，也没有 ```toon fence。
+- `null` 表示可选字段缺失。
+- 从旧版 `.md`+fence 迁移请使用 `llman sdd migrate`。
+
+## Context
+- 执行前先确认当前 change/spec 状态。
+- 优先使用 `llman sdd context --task --paths` 获取相关 specs，而非全量读取或猜测。
+
+## Goal
+- 明确本次命令/skill 要达成的可验证结果。
+
+## Constraints
+- 变更保持最小化且范围明确。
+- 标识符或意图不明确时禁止猜测。
+- 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
+- 判断变更规模后选择路径：行为合约变更走完整 SDD 流程，实现变更走快速路径。
+
+## Workflow
+- 以 `llman sdd` 命令结果为事实来源。
+- 涉及文件/规范变更时执行校验。
+- 首选 `llman sdd context` 获取相关 specs，而非全量读取或猜测。
+- 当 context 不可用时，按错误提示处理（重建 index 或降级到 `list --specs --json`）。
+
+## Decision Policy
+- 高影响歧义必须先澄清。
+- 已知校验错误下禁止强行继续。
+
+## Output Contract
+- 汇总已执行动作。
+- 给出结果路径与校验状态。
+
+## Ethics Governance
+- `ethics.risk_level`：按 `low|medium|high|critical` 标注风险等级。
+- `ethics.prohibited_actions`：列出绝对禁止执行的动作。
+- `ethics.required_evidence`：列出高影响输出前必须具备的证据。
+- `ethics.refusal_contract`：定义何时拒答以及安全替代响应方式。
+- `ethics.escalation_policy`：定义何时必须升级为用户确认/人工复核。
